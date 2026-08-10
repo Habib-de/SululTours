@@ -488,7 +488,7 @@ const App = () => {
     try {
       const token = localStorage.getItem('token');
       if (token) {
-        const response = await fetch('http://localhost:8080/api/auth/logout', {
+        const response = await fetch('https://sulultours.com/api/auth/logout', {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${token}`,

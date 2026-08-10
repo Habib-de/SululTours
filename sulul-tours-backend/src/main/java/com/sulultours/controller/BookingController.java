@@ -104,8 +104,8 @@ public ResponseEntity<ApiResponse<BookingDTO>> createBooking(@RequestBody Bookin
             System.out.println("========================================");
             
             // Set default tenant (sulul)
-            Tenant defaultTenant = tenantRepository.findBySubdomain("sulul_tours")
-                    .orElseThrow(() -> new ResourceNotFoundException("Default tenant 'sulul_tours' not found."));
+            Tenant defaultTenant = tenantRepository.findBySubdomain("sulul")
+                    .orElseThrow(() -> new ResourceNotFoundException("Default tenant 'sulul' not found."));
             
             bookingDTO.setTenantId(defaultTenant.getId());
             bookingDTO.setIsGuestBooking(true);

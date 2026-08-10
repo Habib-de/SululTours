@@ -64,7 +64,7 @@ export const usePushNotifications = () => {
       });
 
       // Save subscription to backend
-      const response = await fetch('http://localhost:8080/api/push/subscribe', {
+      const response = await fetch('https://sulultours.com/api/push/subscribe', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -101,7 +101,7 @@ export const usePushNotifications = () => {
 
       if (subscription) {
         // Remove from backend
-        await fetch('http://localhost:8080/api/push/unsubscribe', {
+        await fetch('https://sulultours.com/api/push/unsubscribe', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

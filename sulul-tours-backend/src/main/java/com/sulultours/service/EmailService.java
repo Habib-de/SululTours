@@ -158,7 +158,7 @@ public class EmailService {
     // ✅ SEND PASSWORD RESET EMAIL
     // ============================================
     public void sendResetPasswordEmail(String to, String resetToken) {
-        String resetLink = "http://localhost:3000/reset-password?token=" + resetToken;
+        String resetLink = "https://sulultours.com/reset-password?token=" + resetToken;
 
         SimpleMailMessage message = new SimpleMailMessage();
         message.setTo(to);
