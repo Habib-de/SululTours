@@ -435,6 +435,37 @@ export const bookingService = {
 };
 
 // ============================================
+// VEHICLE AVAILABILITY SERVICES
+// ============================================
+
+export const availabilityService = {
+    // ✅ Check if a specific vehicle is available for the given dates
+    checkVehicleAvailability: async (vehicleId, startDate, endDate) => {
+        // Convert dates to ISO string if they're not already
+        const start = typeof startDate === 'string' ? startDate : startDate.toISOString();
+        const end = typeof endDate === 'string' ? endDate : endDate.toISOString();
+        
+        const response = await apiCall(
+            `/bookings/availability/vehicle/${vehicleId}?startDate=${encodeURIComponent(start)}&endDate=${encodeURIComponent(end)}`,
+            'GET'
+        );
+        return response;
+    },
+
+    // ✅ Get all available vehicles for the given dates
+    getAvailableVehicles: async (tenantId, startDate, endDate) => {
+        const start = typeof startDate === 'string' ? startDate : startDate.toISOString();
+        const end = typeof endDate === 'string' ? endDate : endDate.toISOString();
+        
+        const response = await apiCall(
+            `/bookings/availability/available-vehicles?tenantId=${tenantId}&startDate=${encodeURIComponent(start)}&endDate=${encodeURIComponent(end)}`,
+            'GET'
+        );
+        return response;
+    }
+};
+
+// ============================================
 // GUEST BOOKING SERVICES (PUBLIC - No auth required)
 // ============================================
 

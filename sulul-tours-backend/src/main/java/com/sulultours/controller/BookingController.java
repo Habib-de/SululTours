@@ -2,6 +2,7 @@ package com.sulultours.controller;
 
 import com.sulultours.dto.ApiResponse;
 import com.sulultours.dto.BookingDTO;
+import com.sulultours.dto.VehicleDTO;
 import com.sulultours.entity.Booking;
 import com.sulultours.entity.CarOwner;
 import com.sulultours.entity.Tenant;
@@ -203,6 +204,65 @@ public ResponseEntity<ApiResponse<List<BookingDTO>>> getAllBookings() {
     public ResponseEntity<ApiResponse<Void>> deleteBooking(@PathVariable String id) {
         bookingService.deleteBooking(id);
         return ResponseEntity.ok(ApiResponse.success("Booking deleted successfully", null));
+    }
+
+        // ============================================
+    // ✅ VEHICLE AVAILABILITY ENDPOINTS
+    // ============================================
+
+    /**
+     * Check if a specific vehicle is available for the given dates
+     * GET /bookings/availability/vehicle/{vehicleId}?startDate=2024-09-01T08:00&endDate=2024-09-05T18:00
+     */
+    @GetMapping("/availability/vehicle/{vehicleId}")
+    @PreAuthorize("hasAnyRole('super_admin', 'fleet_manager', 'client')")
+    public ResponseEntity<ApiResponse<Boolean>> checkVehicleAvailability(
+            @PathVariable String vehicleId,
+            @RequestParam String startDate,
+            @RequestParam String endDate) {
+        
+        try {
+            // Parse the date strings to LocalDateTime
+            LocalDateTime start = LocalDateTime.parse(startDate);
+            LocalDateTime end = LocalDateTime.parse(endDate);
+            
+            boolean isAvailable = bookingService.isVehicleAvailable(vehicleId, start, end);
+            return ResponseEntity.ok(ApiResponse.success(isAvailable));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(ApiResponse.error("Invalid date format: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Get all available vehicles for the given dates
+     * GET /bookings/availability/available-vehicles?tenantId=xxx&startDate=2024-09-01T08:00&endDate=2024-09-05T18:00
+     */
+    @GetMapping("/availability/available-vehicles")
+    @PreAuthorize("hasAnyRole('super_admin', 'fleet_manager', 'client')")
+    public ResponseEntity<ApiResponse<List<VehicleDTO>>> getAvailableVehicles(
+            @RequestParam String tenantId,
+            @RequestParam String startDate,
+            @RequestParam String endDate) {
+        
+        try {
+            // Parse the date strings to LocalDateTime
+            LocalDateTime start = LocalDateTime.parse(startDate);
+            LocalDateTime end = LocalDateTime.parse(endDate);
+            
+            // Get available vehicles from service
+            List<Vehicle> availableVehicles = bookingService.getAvailableVehicles(tenantId, start, end);
+            
+            // Convert to DTOs
+            List<VehicleDTO> dtos = availableVehicles.stream()
+                    .map(this::convertVehicleToDTO)
+                    .collect(Collectors.toList());
+            
+            return ResponseEntity.ok(ApiResponse.success(dtos));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(ApiResponse.error("Error checking availability: " + e.getMessage()));
+        }
     }
 
     private Booking convertToEntity(BookingDTO dto) {
@@ -572,6 +632,31 @@ if (booking.getRoomType() != null) {
         dto.setCreatedAt(booking.getCreatedAt());
         dto.setUpdatedAt(booking.getUpdatedAt());
         
+        return dto;
+    }
+
+        // ============================================
+    // ✅ HELPER METHOD - Convert Vehicle to DTO
+    // ============================================
+    
+    private VehicleDTO convertVehicleToDTO(Vehicle vehicle) {
+        VehicleDTO dto = new VehicleDTO();
+        dto.setId(vehicle.getId());
+        dto.setRegistration(vehicle.getRegistration());
+        dto.setMake(vehicle.getMake());
+        dto.setModel(vehicle.getModel());
+        dto.setYear(vehicle.getYear());
+        dto.setColor(vehicle.getColor());
+        dto.setCategory(vehicle.getCategory());
+        dto.setStatus(vehicle.getStatus());
+        dto.setPricePerDay(vehicle.getPricePerDay());
+        dto.setSeatingCapacity(vehicle.getSeatingCapacity());
+        dto.setFuelType(vehicle.getFuelType());
+        dto.setTransmission(vehicle.getTransmission());
+        dto.setLocation(vehicle.getLocation());
+        dto.setDescription(vehicle.getDescription());
+        dto.setImages(vehicle.getImages());
+        dto.setOwnerId(vehicle.getOwner() != null ? vehicle.getOwner().getId() : null);
         return dto;
     }
 }

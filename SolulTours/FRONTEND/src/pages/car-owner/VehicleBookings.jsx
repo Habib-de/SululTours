@@ -616,9 +616,9 @@ const VehicleBookings = ({ setActiveTab }) => {
                             {booking.mpesaCode && (
                               <span className="text-[8px] font-mono text-blue-500 truncate max-w-[80px]">{booking.mpesaCode}</span>
                             )}
-                            {(booking.paidAmount || 0) > 0 && (
+                            {/* {(booking.paidAmount || 0) > 0 && (
                               <span className="text-[9px] text-green-600">Paid: KSh {(booking.paidAmount || 0).toLocaleString()}</span>
-                            )}
+                            )} */}
                           </div>
                         </td>
                         <td className="px-3 py-3 text-center whitespace-nowrap">

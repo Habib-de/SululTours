@@ -1,14 +1,17 @@
 package com.sulultours.service;
 
 import com.sulultours.entity.Booking;
+import com.sulultours.entity.Vehicle;  
 import com.sulultours.exception.ResourceNotFoundException;
 import com.sulultours.repository.BookingRepository;
+import com.sulultours.repository.VehicleRepository; 
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;  
 import java.util.List;
 import java.util.UUID;
 
@@ -23,6 +26,7 @@ import com.sulultours.entity.RoleEnum;
 public class BookingService {
 
     private final BookingRepository bookingRepository;
+    private final VehicleRepository vehicleRepository;
     private final EmailService emailService;
     private final NotificationService notificationService; 
     private final UserService userService; 
@@ -362,6 +366,78 @@ public Booking createBooking(Booking booking) {
         Booking booking = getBookingById(id);
         bookingRepository.delete(booking);
     }
+
+     // ==========================================
+    // ✅ VEHICLE AVAILABILITY METHODS - ADD THESE
+    // ==========================================
+    
+    /**
+     * Check if a vehicle is available for a specific date range
+     * @param vehicleId The vehicle ID to check
+     * @param startDate The requested start date
+     * @param endDate The requested end date
+     * @return true if available, false if booked
+     */
+    public boolean isVehicleAvailable(String vehicleId, LocalDateTime startDate, LocalDateTime endDate) {
+        // 1. Validate inputs
+        if (vehicleId == null || startDate == null || endDate == null) {
+            return false;
+        }
+        
+        // 2. Check if start date is in the past (can't book in the past)
+        if (startDate.isBefore(LocalDateTime.now())) {
+            return false;
+        }
+        
+        // 3. Check if end date is after start date
+        if (endDate.isBefore(startDate) || endDate.equals(startDate)) {
+            return false;
+        }
+        
+        // 4. Check for overlapping bookings
+        return !bookingRepository.existsOverlappingBooking(vehicleId, startDate, endDate);
+    }
+
+    /**
+     * Get all overlapping bookings for a vehicle and date range
+     */
+    public List<Booking> getOverlappingBookings(String vehicleId, LocalDateTime startDate, LocalDateTime endDate) {
+        if (vehicleId == null || startDate == null || endDate == null) {
+            return new ArrayList<>();
+        }
+        return bookingRepository.findOverlappingBookings(vehicleId, startDate, endDate);
+    }
+
+    /**
+     * Get all vehicles that are available for a date range
+     * @param tenantId The tenant ID
+     * @param startDate The requested start date
+     * @param endDate The requested end date
+     * @return List of available vehicles
+     */
+    public List<Vehicle> getAvailableVehicles(String tenantId, LocalDateTime startDate, LocalDateTime endDate) {
+        // 1. Validate inputs
+        if (tenantId == null || startDate == null || endDate == null) {
+            return new ArrayList<>();
+        }
+        
+        // 2. Get all active vehicles for the tenant
+        List<Vehicle> vehicles = vehicleRepository.findByTenantIdAndStatus(tenantId, "active");
+        if (vehicles == null || vehicles.isEmpty()) {
+            return new ArrayList<>();
+        }
+        
+        // 3. Filter to only available ones
+        List<Vehicle> availableVehicles = new ArrayList<>();
+        for (Vehicle vehicle : vehicles) {
+            if (isVehicleAvailable(vehicle.getId(), startDate, endDate)) {
+                availableVehicles.add(vehicle);
+            }
+        }
+        
+        return availableVehicles;
+    }
+
 
     // ==========================================
     // ✅ ADD HELPER METHODS HERE (BEFORE THE FINAL })

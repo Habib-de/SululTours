@@ -272,47 +272,118 @@ const CarHire = ({ setActiveTab, user }) => {
   };
 
   const getVehicleStatus = (vehicle) => {
-    const activeCount = getActiveBookingsCount(vehicle.id);
-    
-    if (activeCount > 0) {
-      return {
-        status: 'not_available',
-        label: 'Not Available',
-        color: 'red',
-        count: activeCount
-      };
-    }
-    
+  // ✅ SAFETY CHECK - If bookingForm doesn't exist or is undefined
+  if (!bookingForm || typeof bookingForm !== 'object') {
     return {
       status: 'available',
       label: 'Available',
       color: 'green',
       count: 0
     };
-  };
+  }
 
-  const isVehicleAvailableForDates = (vehicleId, startDate, endDate) => {
-    const vehicleBookings = allBookings.filter(b => 
-      b.vehicleId === vehicleId && 
-      (b.status === 'pending' || b.status === 'confirmed')
+  // ✅ SAFETY CHECK - If startDate or endDate don't exist
+  if (!bookingForm.startDate || !bookingForm.endDate) {
+    return {
+      status: 'available',
+      label: 'Available',
+      color: 'green',
+      count: 0
+    };
+  }
+
+  // If dates are selected, check availability for those specific dates
+  if (bookingForm.startDate && bookingForm.endDate) {
+    const isAvailable = isVehicleAvailableForDates(
+      vehicle.id, 
+      bookingForm.startDate, 
+      bookingForm.endDate
     );
-
-    if (vehicleBookings.length === 0) return true;
-
-    const newStart = new Date(startDate);
-    const newEnd = new Date(endDate);
-
-    for (const booking of vehicleBookings) {
-      const existingStart = new Date(booking.startDate);
-      const existingEnd = new Date(booking.endDate);
-
-      if (newStart <= existingEnd && newEnd >= existingStart) {
-        return false;
+    
+    if (!isAvailable) {
+      const conflicts = getOverlappingBookings(
+        vehicle.id, 
+        bookingForm.startDate, 
+        bookingForm.endDate
+      );
+      const conflict = conflicts[0];
+      if (conflict) {
+        return {
+          status: 'not_available',
+          label: `Booked ${formatDateTime(conflict.startDate).split(',')[0]} - ${formatDateTime(conflict.endDate).split(',')[0]}`,
+          color: 'red',
+          count: conflicts.length
+        };
       }
+      return {
+        status: 'not_available',
+        label: 'Not Available',
+        color: 'red',
+        count: 0
+      };
     }
-
-    return true;
+    
+    return {
+      status: 'available',
+      label: 'Available for selected dates ✅',
+      color: 'green',
+      count: 0
+    };
+  }
+  
+  // ✅ If NO DATES SELECTED, ALWAYS SHOW "Available"
+  return {
+    status: 'available',
+    label: 'Available',
+    color: 'green',
+    count: 0
   };
+};
+
+  // ✅ Check if vehicle is available for specific dates (date-aware with time)
+const isVehicleAvailableForDates = (vehicleId, startDate, endDate) => {
+  if (!startDate || !endDate) return true; // No dates selected yet
+  
+  // Parse the dates
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  
+  // Check if start date is in the past
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  if (start < today) {
+    return false; // Can't book in the past
+  }
+  
+  // Check if end date is after start date
+  if (end <= start) {
+    return false;
+  }
+  
+  // Check for overlapping bookings (date-aware)
+  return !allBookings.some(b => 
+    b.vehicleId === vehicleId &&
+    (b.status === 'pending' || b.status === 'confirmed') &&
+    // Check if dates overlap
+    new Date(b.startDate) < end &&
+    new Date(b.endDate) > start
+  );
+};
+
+// ✅ Get overlapping bookings for a vehicle
+const getOverlappingBookings = (vehicleId, startDate, endDate) => {
+  if (!startDate || !endDate) return [];
+  
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  
+  return allBookings.filter(b => 
+    b.vehicleId === vehicleId &&
+    (b.status === 'pending' || b.status === 'confirmed') &&
+    new Date(b.startDate) < end &&
+    new Date(b.endDate) > start
+  );
+};
 
   const calculateDays = (start, end) => {
     if (!start || !end) return 0;
@@ -430,17 +501,40 @@ const CarHire = ({ setActiveTab, user }) => {
     }
 
     if (!bookingForm.startDate || !bookingForm.endDate) {
-      showNotification('Please select start and end dates', 'error');
-      return;
-    }
+  showNotification('Please select start and end dates', 'error');
+  return;
+}
 
-    const startDateTime = `${bookingForm.startDate}T${bookingForm.startTime || '08:00'}`;
-    const endDateTime = `${bookingForm.endDate}T${bookingForm.endTime || '18:00'}`;
+// ✅ CHECK IF START DATE IS IN THE PAST
+const startDateObj = new Date(bookingForm.startDate);
+const today = new Date();
+today.setHours(0, 0, 0, 0);
+if (startDateObj < today) {
+  showNotification('⚠️ Start date cannot be in the past', 'error');
+  return;
+}
 
-    if (!isVehicleAvailableForDates(selectedVehicle.id, startDateTime, endDateTime)) {
-      showNotification('❌ This vehicle is already booked for the selected dates!', 'error');
-      return;
-    }
+// ✅ CHECK IF END DATE IS AFTER START DATE
+const endDateObj = new Date(bookingForm.endDate);
+if (endDateObj <= startDateObj) {
+  showNotification('⚠️ End date must be after start date', 'error');
+  return;
+}
+
+const startDateTime = `${bookingForm.startDate}T${bookingForm.startTime || '08:00'}`;
+const endDateTime = `${bookingForm.endDate}T${bookingForm.endTime || '18:00'}`;
+
+// ✅ CHECK AVAILABILITY
+if (!isVehicleAvailableForDates(selectedVehicle.id, startDateTime, endDateTime)) {
+  const conflicts = getOverlappingBookings(selectedVehicle.id, startDateTime, endDateTime);
+  let conflictMessage = '❌ This vehicle is not available for the selected dates.';
+  if (conflicts.length > 0) {
+    const conflict = conflicts[0];
+    conflictMessage = `❌ This vehicle is booked from ${formatDateTime(conflict.startDate)} to ${formatDateTime(conflict.endDate)}. Please choose different dates or another vehicle.`;
+  }
+  showNotification(conflictMessage, 'error');
+  return;
+}
 
     if (bookingForm.paymentMethod === 'M_PESA') {
       if (!bookingForm.mpesaCode || bookingForm.mpesaCode.length < 6) {
@@ -600,31 +694,35 @@ const CarHire = ({ setActiveTab, user }) => {
   };
 
   // COMPACT Vehicle Card
-  const VehicleCard = ({ vehicle }) => {
-    const status = getVehicleStatus(vehicle);
-    const activeCount = getActiveBookingsCount(vehicle.id);
+  // COMPACT Vehicle Card
+const VehicleCard = ({ vehicle }) => {
+  const status = getVehicleStatus(vehicle);
+  const activeCount = getActiveBookingsCount(vehicle.id);
 
-    const handleBookClick = () => {
-      setSelectedVehicle(vehicle);
-      const userToUse = loggedInUser || user || currentUser;
-      setBookingForm(prev => ({
-        ...prev,
-        customerName: userToUse?.name || '',
-        customerEmail: userToUse?.email || '',
-        customerPhone: userToUse?.phone || ''
-      }));
-      setShowBookingModal(true);
-    };
+  const [showVehicleDetailModal, setShowVehicleDetailModal] = useState(false);
 
-    const handleViewClick = () => {
-      setSelectedVehicle(vehicle);
-      setShowBookingModal(true);
-    };
+  const handleBookClick = () => {
+    setSelectedVehicle(vehicle);
+    const userToUse = loggedInUser || user || currentUser;
+    setBookingForm(prev => ({
+      ...prev,
+      customerName: userToUse?.name || '',
+      customerEmail: userToUse?.email || '',
+      customerPhone: userToUse?.phone || ''
+    }));
+    setShowBookingModal(true);
+  };
 
-    return (
+  const handleViewClick = () => {
+    setSelectedVehicle(vehicle);
+    setShowVehicleDetailModal(true);
+  };
+
+  return (
+    <>
       <div className="bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow overflow-hidden border border-gray-100">
-  {/* Slightly larger Image */}
-  <div className="relative h-40 bg-gray-100">
+        {/* Image */}
+        <div className="relative h-40 bg-gray-100">
           {vehicle.images ? (
             <img 
               src={vehicle.images} 
@@ -651,13 +749,13 @@ const CarHire = ({ setActiveTab, user }) => {
         </div>
 
         <div className="p-4">
-  <div className="flex justify-between items-start">
-    <div>
-      <h3 className="text-base font-bold text-gray-800">
-        {vehicle.make} {vehicle.model}
-      </h3>
-      <p className="text-xs text-gray-500">{vehicle.registration}</p>
-    </div>
+          <div className="flex justify-between items-start">
+            <div>
+              <h3 className="text-base font-bold text-gray-800">
+                {vehicle.make} {vehicle.model}
+              </h3>
+              <p className="text-xs text-gray-500">{vehicle.registration}</p>
+            </div>
             <div className="text-right">
               <p className="text-sm font-bold text-blue-600">
                 {formatCurrency(vehicle.pricePerDay)}
@@ -667,19 +765,19 @@ const CarHire = ({ setActiveTab, user }) => {
           </div>
 
           <div className="flex items-center gap-4 mt-1.5 text-xs text-gray-500">
-  <span className="flex items-center gap-1">
-    <Users size={14} className="text-blue-500" />
-    {vehicle.seatingCapacity || 5}
-  </span>
-  <span className="flex items-center gap-1">
-    <Settings size={14} className="text-blue-500" />
-    {getTransmissionLabel(vehicle.transmission)}
-  </span>
-  <span className="flex items-center gap-1">
-    <Fuel size={14} className="text-blue-500" />
-    {vehicle.fuelType || 'Petrol'}
-  </span>
-</div>
+            <span className="flex items-center gap-1">
+              <Users size={14} className="text-blue-500" />
+              {vehicle.seatingCapacity || 5}
+            </span>
+            <span className="flex items-center gap-1">
+              <Settings size={14} className="text-blue-500" />
+              {getTransmissionLabel(vehicle.transmission)}
+            </span>
+            <span className="flex items-center gap-1">
+              <Fuel size={14} className="text-blue-500" />
+              {vehicle.fuelType || 'Petrol'}
+            </span>
+          </div>
 
           {vehicle.location && (
             <div className="flex items-center gap-0.5 text-[9px] text-gray-400 mt-0.5">
@@ -688,44 +786,198 @@ const CarHire = ({ setActiveTab, user }) => {
             </div>
           )}
 
+          {/* ✅ Status Display */}
           <div className="mt-2">
-            {activeCount > 0 ? (
-              <div className="text-[9px] text-red-600 bg-red-50 rounded px-2 py-0.5 text-center">
-                ❌ Not Available
-              </div>
-            ) : (
-              <div className="text-[9px] text-green-600 bg-green-50 rounded px-2 py-0.5 text-center">
-                ✅ Available
-              </div>
-            )}
+            {(() => {
+              // If dates are selected, check availability for those specific dates
+              if (bookingForm.startDate && bookingForm.endDate) {
+                const isAvailable = isVehicleAvailableForDates(
+                  vehicle.id, 
+                  bookingForm.startDate, 
+                  bookingForm.endDate
+                );
+                const conflicts = getOverlappingBookings(
+                  vehicle.id, 
+                  bookingForm.startDate, 
+                  bookingForm.endDate
+                );
+                
+                if (!isAvailable && conflicts.length > 0) {
+                  const conflict = conflicts[0];
+                  return (
+                    <div className="text-[9px] text-red-600 bg-red-50 rounded px-2 py-0.5 text-center">
+                      ❌ Booked {formatDateTime(conflict.startDate).split(',')[0]} - {formatDateTime(conflict.endDate).split(',')[0]}
+                    </div>
+                  );
+                } else if (isAvailable) {
+                  return (
+                    <div className="text-[9px] text-green-600 bg-green-50 rounded px-2 py-0.5 text-center">
+                      ✅ Available for selected dates
+                    </div>
+                  );
+                }
+              }
+              
+              // ✅ If NO DATES SELECTED, ALWAYS SHOW "Available"
+              return (
+                <div className="text-[9px] text-green-600 bg-green-50 rounded px-2 py-0.5 text-center">
+                  ✅ Available
+                </div>
+              );
+            })()}
           </div>
 
+          {/* ✅ TWO BUTTONS: View Details + Book Now */}
           <div className="flex gap-2 mt-3">
-  <button
-    onClick={handleBookClick}
-    disabled={activeCount > 0}
-    className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all duration-300 flex items-center justify-center gap-2
-      ${activeCount > 0 
-        ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
-        : 'bg-blue-600 text-white hover:bg-blue-700'}`}
-  >
-    <Calendar size={14} />
-    {activeCount > 0 ? 'Unavailable' : 'Book Now'}
-  </button>
-  {/* <button
-    onClick={handleViewClick}
-    className="px-3 py-2 border border-gray-200 rounded-lg text-gray-500 hover:bg-gray-50 transition-colors"
-  >
-    <Eye size={16} />
-  </button> */}
-</div>
+            {/* View Details Button - ALWAYS enabled */}
+            <button
+              onClick={handleViewClick}
+              className="px-3 py-2 rounded-lg text-sm font-semibold transition-all duration-300 flex items-center justify-center gap-2 bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-200"
+            >
+              <Eye size={14} />
+              View
+            </button>
+
+            {/* Book Now Button - Enabled/Disabled based on availability */}
+            {(() => {
+              let isAvailable = true;
+              let buttonText = 'Book Now';
+              
+              if (bookingForm.startDate && bookingForm.endDate) {
+                isAvailable = isVehicleAvailableForDates(
+                  vehicle.id, 
+                  bookingForm.startDate, 
+                  bookingForm.endDate
+                );
+                if (!isAvailable) {
+                  buttonText = 'Not Available';
+                }
+              }
+              // ✅ No dates selected - always Book Now
+              
+              return (
+                <button
+                  onClick={handleBookClick}
+                  disabled={!isAvailable}
+                  className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all duration-300 flex items-center justify-center gap-2
+                    ${!isAvailable 
+                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
+                      : 'bg-blue-600 text-white hover:bg-blue-700'}`}
+                >
+                  <Calendar size={14} />
+                  {buttonText}
+                </button>
+              );
+            })()}
+          </div>
         </div>
       </div>
-    );
-  };
+
+      {/* ✅ Vehicle Detail Modal (View-Only) */}
+      {showVehicleDetailModal && selectedVehicle && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white p-4 border-b border-gray-100 flex justify-between items-center">
+              <div>
+                <h3 className="text-xl font-bold">Vehicle Details</h3>
+                <p className="text-sm text-gray-500">
+                  {selectedVehicle.make} {selectedVehicle.model}
+                </p>
+              </div>
+              <button onClick={() => {
+                setShowVehicleDetailModal(false);
+                setSelectedVehicle(null);
+              }} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {/* Vehicle Image */}
+              {selectedVehicle.images ? (
+                <img 
+                  src={selectedVehicle.images} 
+                  alt={`${selectedVehicle.make} ${selectedVehicle.model}`}
+                  className="w-full h-56 object-cover rounded-lg"
+                />
+              ) : (
+                <div className="w-full h-56 bg-gray-100 rounded-lg flex items-center justify-center">
+                  <Car size={48} className="text-gray-400" />
+                </div>
+              )}
+
+              {/* Vehicle Info */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm text-gray-500">Make</p>
+                  <p className="font-semibold">{selectedVehicle.make}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Model</p>
+                  <p className="font-semibold">{selectedVehicle.model}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Registration</p>
+                  <p className="font-semibold">{selectedVehicle.registration}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Price per Day</p>
+                  <p className="font-semibold text-blue-600">{formatCurrency(selectedVehicle.pricePerDay)}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Seating Capacity</p>
+                  <p className="font-semibold">{selectedVehicle.seatingCapacity || 5}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Transmission</p>
+                  <p className="font-semibold">{getTransmissionLabel(selectedVehicle.transmission)}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Fuel Type</p>
+                  <p className="font-semibold">{selectedVehicle.fuelType || 'Petrol'}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Location</p>
+                  <p className="font-semibold">{selectedVehicle.location || 'N/A'}</p>
+                </div>
+              </div>
+
+              {/* Description */}
+              {selectedVehicle.description && (
+                <div>
+                  <p className="text-sm text-gray-500 mb-1">Description</p>
+                  <p className="text-gray-700">{selectedVehicle.description}</p>
+                </div>
+              )}
+
+              {/* Availability Status */}
+              <div className="bg-gray-50 rounded-lg p-3">
+                <p className="text-sm text-gray-500">Availability</p>
+                <p className="font-semibold text-green-600">✅ Available for booking</p>
+              </div>
+
+              <button
+                onClick={() => {
+                  setShowVehicleDetailModal(false);
+                  // Open booking modal
+                  setShowBookingModal(true);
+                }}
+                className="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold flex items-center justify-center gap-2"
+              >
+                <Calendar size={18} />
+                Book Now
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+};
 
   // Booking Card - Compact
   const BookingCard = ({ booking }) => {
+    const tenantPhone = currentUser?.tenantPhone || '0700584143';
     return (
       <div className="bg-white rounded-lg shadow-sm p-3 border border-gray-100 hover:shadow-md transition-shadow">
         <div className="flex justify-between items-start mb-1">
@@ -768,9 +1020,12 @@ const CarHire = ({ setActiveTab, user }) => {
               <X size={12} /> Cancel
             </button>
           )}
-          <button className="flex-1 px-2 py-1 bg-gray-50 text-gray-600 rounded text-[10px] hover:bg-gray-100 transition-colors flex items-center justify-center gap-1">
-            <MessageCircle size={12} /> Contact
-          </button>
+          <a
+  href={`tel:${tenantPhone}`}
+  className="flex-1 px-2 py-1 bg-green-50 text-green-600 rounded text-[10px] hover:bg-green-100 transition-colors flex items-center justify-center gap-1"
+>
+  <Phone size={12} /> Contact
+</a>
         </div>
       </div>
     );
@@ -966,6 +1221,7 @@ const CarHire = ({ setActiveTab, user }) => {
                       type="date"
                       value={formatDateForInput(bookingForm.startDate)}
                       onChange={handleDateInputChange('startDate')}
+                      min={new Date().toISOString().split('T')[0]}
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
                       required
                     />
@@ -976,6 +1232,7 @@ const CarHire = ({ setActiveTab, user }) => {
                       type="date"
                       value={formatDateForInput(bookingForm.endDate)}
                       onChange={handleDateInputChange('endDate')}
+                      min={bookingForm.startDate || new Date().toISOString().split('T')[0]}
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
                     />
                   </div>
@@ -1124,7 +1381,9 @@ const CarHire = ({ setActiveTab, user }) => {
     licenseImagePreview,
     setShowBookingModal,
     setSelectedVehicle,
-    tenantId
+    tenantId,
+    isVehicleAvailableForDates, 
+    getOverlappingBookings
   ]);
 
   const userBookings = getUserBookings();

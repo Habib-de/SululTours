@@ -6,7 +6,7 @@ import {
   Receipt, Percent, Tag, Upload, Camera,
   Search, Filter, Compass, Map, Hotel, Plane, Headphones,
   Construction, MapPin, Bed, Users as UsersIcon,
-  PlaneTakeoff, PlaneLanding, Ticket, Crown, Briefcase
+  PlaneTakeoff, PlaneLanding, Ticket, Crown, Briefcase, Info  
 } from 'lucide-react';
 
 // ✅ IMPORT ONLY guestBookingService (NO publicDataService)
@@ -270,35 +270,78 @@ const GuestBooking = ({ onNavigate }) => {
   setLoading(false);
 };
 
-  const isVehicleAvailable = (vehicleId, startDate, endDate) => {
-    const vehicleBookings = allBookings.filter(b => 
-      b.vehicleId === vehicleId && 
-      (b.status === 'pending' || b.status === 'confirmed')
-    );
+  // ✅ REPLACE with date-aware version
+const isVehicleAvailableForDates = (vehicleId, startDate, endDate) => {
+  if (!startDate || !endDate) return true;
+  
+  // Parse the dates safely
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  
+  // Check if dates are valid
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) return true;
+  
+  // Check if start date is in the past
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  if (start < today) return false;
+  
+  // Check if end date is after start date
+  if (end <= start) return false;
+  
+  // Check for overlapping bookings with SAFE date parsing
+  return !allBookings.some(b => {
+    // Skip if not the same vehicle
+    if (b.vehicleId !== vehicleId) return false;
+    
+    // Only check pending and confirmed bookings
+    if (b.status !== 'pending' && b.status !== 'confirmed') return false;
+    
+    // Parse booking dates safely
+    const bStart = new Date(b.startDate);
+    const bEnd = new Date(b.endDate);
+    
+    // Check for date overlap
+    return bStart < end && bEnd > start;
+  });
+};
 
-    if (vehicleBookings.length === 0) return true;
+// ✅ NEW: Get overlapping bookings for a vehicle
+const getOverlappingBookings = (vehicleId, startDate, endDate) => {
+  if (!startDate || !endDate) return [];
+  
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) return [];
+  
+  return allBookings.filter(b => {
+    if (b.vehicleId !== vehicleId) return false;
+    if (b.status !== 'pending' && b.status !== 'confirmed') return false;
+    
+    const bStart = new Date(b.startDate);
+    const bEnd = new Date(b.endDate);
+    
+    return bStart < end && bEnd > start;
+  });
+};
 
-    const newStart = new Date(startDate);
-    const newEnd = new Date(endDate);
-
-    for (const booking of vehicleBookings) {
-      const existingStart = new Date(booking.startDate);
-      const existingEnd = new Date(booking.endDate);
-
-      if (newStart <= existingEnd && newEnd >= existingStart) {
-        return false;
-      }
-    }
-
-    return true;
-  };
-
-  const getActiveBookingsCount = (vehicleId) => {
+// ✅ UPDATE: Get active bookings count (now date-aware)
+const getActiveBookingsCount = (vehicleId, startDate, endDate) => {
+  // If no dates selected, return total active bookings
+  if (!startDate || !endDate) {
     return allBookings.filter(b => 
       b.vehicleId === vehicleId && 
       (b.status === 'pending' || b.status === 'confirmed')
     ).length;
-  };
+  }
+  
+  // If dates selected, check for overlapping bookings
+  return getOverlappingBookings(vehicleId, startDate, endDate).length;
+};
+
+// ✅ Alias for backward compatibility
+const isVehicleAvailable = isVehicleAvailableForDates;
 
   const calculateDays = (start, end) => {
     if (!start || !end) return 0;
@@ -661,6 +704,76 @@ const handleSubmit = async (e) => {
     console.log('⚠️ Already submitting, please wait...');
     return;
   }
+
+  // ✅ ADD THIS AVAILABILITY CHECK FIRST
+  if (selectedService === 'car_hire') {
+    const startDateTime = `${formData.startDate}T${formData.startTime || '08:00'}`;
+    const endDateTime = `${formData.endDate}T${formData.endTime || '18:00'}`;
+    
+    if (!formData.startDate || !formData.endDate) {
+      showNotification('Please select start and end dates for car hire', 'error');
+      return;
+    }
+    
+    // ✅ CHECK IF START DATE IS IN THE PAST
+    const startDateObj = new Date(formData.startDate);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (startDateObj < today) {
+      showNotification('⚠️ Start date cannot be in the past', 'error');
+      return;
+    }
+
+    // ✅ CHECK IF END DATE IS AFTER START DATE
+    const endDateObj = new Date(formData.endDate);
+    if (endDateObj <= startDateObj) {
+      showNotification('⚠️ End date must be after start date', 'error');
+      return;
+    }
+    
+    // ✅ CHECK AVAILABILITY WITH CONFLICT DETAILS
+    const isAvailable = isVehicleAvailableForDates(formData.itemId, startDateTime, endDateTime);
+    
+    if (!isAvailable) {
+      const conflicts = getOverlappingBookings(formData.itemId, startDateTime, endDateTime);
+      
+      // Get vehicle details for better message
+      const vehicle = vehicles.find(v => v.id === formData.itemId);
+      const vehicleName = vehicle ? `${vehicle.make} ${vehicle.model} (${vehicle.registration})` : 'This vehicle';
+      
+      let conflictMessage = '';
+      
+      if (conflicts.length > 0) {
+        const conflict = conflicts[0];
+        const conflictStart = formatDateTime(conflict.startDate);
+        const conflictEnd = formatDateTime(conflict.endDate);
+        const customerName = conflict.customerName || 'Another customer';
+        
+        conflictMessage = `
+❌ ${vehicleName} is already booked!
+
+📅 Booked from: ${conflictStart}
+📅 Booked to: ${conflictEnd}
+
+Please choose different dates or another vehicle.
+        `;
+      } else {
+        conflictMessage = `
+❌ ${vehicleName} is not available for the selected dates.
+
+Please choose different dates or another vehicle.
+        `;
+      }
+      
+      // ✅ SHOW THE CONFLICT MESSAGE
+      showNotification(conflictMessage, 'error');
+      
+      // ✅ ALSO SHOW AS ALERT FOR BETTER VISIBILITY
+      alert(conflictMessage);
+      
+      return;
+    }
+  }
   
   if (!formData.customerName) {
     showNotification('Please enter your name', 'error');
@@ -684,25 +797,42 @@ const handleSubmit = async (e) => {
   }
 
   if (selectedService === 'car_hire') {
-    const startDateTime = `${formData.startDate}T${formData.startTime || '08:00'}`;
-    const endDateTime = `${formData.endDate}T${formData.endTime || '18:00'}`;
-    
-    if (!isVehicleAvailable(formData.itemId, startDateTime, endDateTime)) {
-      showNotification('❌ This vehicle is already booked for the selected dates! Please choose different dates or another vehicle.', 'error');
-      return;
-    }
-
-    const activeCount = getActiveBookingsCount(formData.itemId);
-    if (activeCount > 0) {
-      showNotification(`❌ This vehicle has ${activeCount} active booking(s). Please wait for them to be completed before booking again.`, 'error');
-      return;
-    }
-
-    if (!formData.startDate || !formData.endDate) {
-      showNotification('Please select start and end dates for car hire', 'error');
-      return;
-    }
+  const startDateTime = `${formData.startDate}T${formData.startTime || '08:00'}`;
+  const endDateTime = `${formData.endDate}T${formData.endTime || '18:00'}`;
+  
+  if (!formData.startDate || !formData.endDate) {
+    showNotification('Please select start and end dates for car hire', 'error');
+    return;
   }
+  
+  // ✅ CHECK IF START DATE IS IN THE PAST
+  const startDateObj = new Date(formData.startDate);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  if (startDateObj < today) {
+    showNotification('⚠️ Start date cannot be in the past', 'error');
+    return;
+  }
+
+  // ✅ CHECK IF END DATE IS AFTER START DATE
+  const endDateObj = new Date(formData.endDate);
+  if (endDateObj <= startDateObj) {
+    showNotification('⚠️ End date must be after start date', 'error');
+    return;
+  }
+  
+  // ✅ Use date-aware availability check
+  if (!isVehicleAvailableForDates(formData.itemId, startDateTime, endDateTime)) {
+    const conflicts = getOverlappingBookings(formData.itemId, startDateTime, endDateTime);
+    let conflictMessage = '❌ This vehicle is not available for the selected dates.';
+    if (conflicts.length > 0) {
+      const conflict = conflicts[0];
+      conflictMessage = `❌ This vehicle is booked from ${formatDateTime(conflict.startDate)} to ${formatDateTime(conflict.endDate)}. Please choose different dates or another vehicle.`;
+    }
+    showNotification(conflictMessage, 'error');
+    return;
+  }
+}
 
   // Hotel validation
   if (selectedService === 'hotel') {
@@ -1313,57 +1443,111 @@ const handleSubmit = async (e) => {
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Select {service?.label} *</label>
                 <select
-                  value={formData.itemId}
-                  onChange={(e) => handleItemSelect(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
-                >
-                  <option value="">Select...</option>
-                  {items.length === 0 ? (
-                    <option disabled>No items available</option>
-                  ) : (
-                    items.map(item => {
-                      let isAvailable = true;
-                      let activeCount = 0;
-                      if (selectedService === 'car_hire') {
-                        activeCount = getActiveBookingsCount(item.id);
-                        isAvailable = activeCount === 0;
-                      }
-                      return (
-                        <option 
-                          key={item.id} 
-                          value={item.id}
-                          className={!isAvailable ? 'text-gray-400' : ''}
-                        >
-                          {getItemDisplayName(item)}
-                          {!isAvailable && ` ❌ ${activeCount} active booking(s)`}
-                          {isAvailable && ' ✅ Available'}
-                        </option>
-                      );
-                    })
-                  )}
-                </select>
+  value={formData.itemId}
+  onChange={(e) => handleItemSelect(e.target.value)}
+  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+>
+  <option value="">Select...</option>
+  {items.length === 0 ? (
+    <option disabled>No items available</option>
+  ) : (
+    (() => {
+      // ✅ Define dates ONCE outside the map
+      const startDateTime = formData.startDate ? `${formData.startDate}T${formData.startTime || '08:00'}` : null;
+      const endDateTime = formData.endDate ? `${formData.endDate}T${formData.endTime || '18:00'}` : null;
+      
+      return items.map(item => {
+        let isAvailable = true;
+        let conflictInfo = '';
+        let availabilityText = '';
+        
+        if (selectedService === 'car_hire') {
+          // ✅ Only check if BOTH dates are selected
+          if (startDateTime && endDateTime) {
+            isAvailable = isVehicleAvailableForDates(item.id, startDateTime, endDateTime);
+            if (!isAvailable) {
+              const conflicts = getOverlappingBookings(item.id, startDateTime, endDateTime);
+              if (conflicts.length > 0) {
+                const conflict = conflicts[0];
+                conflictInfo = ` ❌ Booked ${formatDateTime(conflict.startDate)} - ${formatDateTime(conflict.endDate)}`;
+              }
+            } else {
+              availabilityText = ' ✅ Available for dates';
+            }
+          } else {
+            // ✅ NO DATES SELECTED - Always show as available
+            isAvailable = true;
+            conflictInfo = '';
+            availabilityText = '';
+          }
+        }
+        
+        return (
+          <option 
+            key={item.id} 
+            value={item.id}
+            disabled={!isAvailable}
+            className={!isAvailable ? 'text-gray-400' : ''}
+          >
+            {getItemDisplayName(item)}
+            {!isAvailable && conflictInfo}
+            {isAvailable && availabilityText}
+          </option>
+        );
+      });
+    })()
+  )}
+</select>
                 
                 {selectedService === 'car_hire' && formData.itemId && (
-                  <div className="mt-2">
-                    {(() => {
-                      const activeCount = getActiveBookingsCount(formData.itemId);
-                      if (activeCount > 0) {
-                        return (
-                          <div className="bg-red-50 border border-red-200 rounded-lg p-2 text-sm text-red-700 flex items-center gap-2">
-                            <AlertCircle size={16} />
-                            <span>⚠️ This vehicle has {activeCount} active booking(s). Cannot book until completed.</span>
-                          </div>
-                        );
-                      }
-                      return (
-                        <div className="bg-green-50 border border-green-200 rounded-lg p-2 text-sm text-green-700 flex items-center gap-2">
-                          <CheckCircle size={16} />
-                          <span>✅ Vehicle is available for booking</span>
-                        </div>
-                      );
-                    })()}
-                  </div>
-                )}
+  <div className="mt-2">
+    {(() => {
+      const startDateTime = formData.startDate ? `${formData.startDate}T${formData.startTime || '08:00'}` : null;
+      const endDateTime = formData.endDate ? `${formData.endDate}T${formData.endTime || '18:00'}` : null;
+      
+      // ✅ If BOTH dates are selected - Check availability
+      if (startDateTime && endDateTime) {
+        const isAvailable = isVehicleAvailableForDates(formData.itemId, startDateTime, endDateTime);
+        const conflicts = getOverlappingBookings(formData.itemId, startDateTime, endDateTime);
+        
+        if (!isAvailable && conflicts.length > 0) {
+          const conflict = conflicts[0];
+          return (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-2 text-sm text-red-700 flex items-center gap-2">
+              <AlertCircle size={16} />
+              <span>❌ Booked from {formatDateTime(conflict.startDate)} to {formatDateTime(conflict.endDate)}</span>
+            </div>
+          );
+        } else if (isAvailable) {
+          return (
+            <div className="bg-green-50 border border-green-200 rounded-lg p-2 text-sm text-green-700 flex items-center gap-2">
+              <CheckCircle size={16} />
+              <span>✅ Vehicle is available for the selected dates!</span>
+            </div>
+          );
+        }
+      }
+      
+      // ✅ If ONLY ONE date is selected - Show info message
+      if ((formData.startDate && !formData.endDate) || (!formData.startDate && formData.endDate)) {
+        return (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-2 text-sm text-blue-700 flex items-center gap-2">
+            <Info size={16} />
+            <span>ℹ️ Please select both start and end dates to check availability.</span>
+          </div>
+        );
+      }
+      
+      // ✅ If NO DATES SELECTED - Always show available
+      return (
+        <div className="bg-green-50 border border-green-200 rounded-lg p-2 text-sm text-green-700 flex items-center gap-2">
+          <CheckCircle size={16} />
+          <span>✅ Vehicle is available</span>
+        </div>
+      );
+    })()}
+  </div>
+)}
               </div>
             </div>
           )}
@@ -1841,11 +2025,11 @@ const handleSubmit = async (e) => {
         <p><span className="text-gray-600">Email:</span> <span className="font-medium">{formData.customerEmail}</span></p>
         <p><span className="text-gray-600">Phone:</span> <span className="font-medium">{formData.customerPhone}</span></p>
         {formData.startDate && (
-          <p><span className="text-gray-600">Start:</span> <span className="font-medium">{formatDateTime(formData.startDate)}</span></p>
-        )}
-        {formData.endDate && (
-          <p><span className="text-gray-600">End:</span> <span className="font-medium">{formatDateTime(formData.endDate)}</span></p>
-        )}
+  <p><span className="text-gray-600">Start:</span> <span className="font-medium">{formatDateForInput(formData.startDate)}</span></p>
+)}
+{formData.endDate && (
+  <p><span className="text-gray-600">End:</span> <span className="font-medium">{formatDateForInput(formData.endDate)}</span></p>
+)}
         {formData.passengers > 1 && (
           <p><span className="text-gray-600">Passengers:</span> <span className="font-medium">{formData.passengers}</span></p>
         )}
@@ -1918,11 +2102,11 @@ const handleSubmit = async (e) => {
             <p>📦 Item: <strong>{getItemDisplayName(selectedItem)}</strong></p>
           )}
           {formData.startDate && (
-            <p>📅 Start: <strong>{formatDateTime(formData.startDate)}</strong></p>
-          )}
-          {formData.endDate && (
-            <p>📅 End: <strong>{formatDateTime(formData.endDate)}</strong></p>
-          )}
+  <p>📅 Start: <strong>{formatDateForInput(formData.startDate)}</strong></p>
+)}
+{formData.endDate && (
+  <p>📅 End: <strong>{formatDateForInput(formData.endDate)}</strong></p>
+)}
           {formData.passengers > 1 && (
             <p>👥 Passengers: <strong>{formData.passengers}</strong></p>
           )}
