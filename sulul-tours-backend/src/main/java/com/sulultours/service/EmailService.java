@@ -5,9 +5,12 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
 
 import java.time.format.DateTimeFormatter;
+
+import javax.mail.internet.MimeMessage;
 
 @Slf4j
 @Service
@@ -155,32 +158,62 @@ public class EmailService {
     }
 
     // ============================================
-    // ✅ SEND PASSWORD RESET EMAIL
-    // ============================================
-    public void sendResetPasswordEmail(String to, String resetToken) {
-        String resetLink = "https://sulultours.com/reset-password?token=" + resetToken;
+// ✅ SEND PASSWORD RESET EMAIL (HTML VERSION - LIKE KAAFI AQUA)
+// ============================================
+public void sendResetPasswordEmail(String to, String resetToken) {
+    try {
+        // ============================================
+        // ✅ CHANGE THIS SECTION (lines 115-116)
+        // ============================================
+        // String frontendUrl = "https://sulultours.com"; // Production
+        String frontendUrl = "http://localhost:3000"; // Local development
+        
+        String resetUrl = frontendUrl + "/reset-password?token=" + resetToken;
+        String subject = "🔐 Password Reset Request - Sulul Tours";
+        
+        // ✅ HTML content (like Kaafi Aqua)
+        String content = 
+            "<!DOCTYPE html>" +
+            "<html>" +
+            "<head><meta charset='UTF-8'></head>" +
+            "<body style='font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;'>" +
+            "<div style='background: linear-gradient(135deg, #f59e0b, #ea580c); padding: 20px; text-align: center; border-radius: 10px 10px 0 0;'>" +
+            "<h1 style='color: white; margin: 0;'>🔐 Password Reset</h1>" +
+            "</div>" +
+            "<div style='background: #f8fafc; padding: 30px; border-radius: 0 0 10px 10px; border: 1px solid #e2e8f0;'>" +
+            "<h2 style='color: #1e293b;'>Hello,</h2>" +
+            "<p style='color: #475569; line-height: 1.6;'>We received a request to reset your password for your <strong>Sulul Tours</strong> account.</p>" +
+            "<div style='text-align: center; margin: 30px 0;'>" +
+            "<a href='" + resetUrl + "' style='background: linear-gradient(135deg, #f59e0b, #ea580c); color: white; padding: 12px 30px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;'>Reset Password</a>" +
+            "</div>" +
+            "<p style='color: #64748b; font-size: 14px;'>Or copy and paste this link into your browser:</p>" +
+            "<p style='color: #3b82f6; word-break: break-all; font-size: 12px; background: #f1f5f9; padding: 10px; border-radius: 5px;'>" + resetUrl + "</p>" +
+            "<p style='color: #64748b; font-size: 14px;'>⏰ This link will expire in <strong>1 hour</strong>.</p>" +
+            "<hr style='border: 1px solid #e2e8f0; margin: 20px 0;'>" +
+            "<p style='color: #94a3b8; font-size: 12px;'>If you didn't request this, please ignore this email.</p>" +
+            "<p style='color: #94a3b8; font-size: 12px;'>Need help? Contact us at <a href='mailto:sulultoursandtravel@gmail.com'>sulultoursandtravel@gmail.com</a></p>" +
+            "</div>" +
+            "<div style='text-align: center; padding-top: 20px; color: #94a3b8; font-size: 12px;'>" +
+            "© 2026 Sulul Tours &amp; Travel. All rights reserved." +
+            "</div>" +
+            "</body>" +
+            "</html>";
 
-        SimpleMailMessage message = new SimpleMailMessage();
-        message.setTo(to);
-        message.setSubject("Sulul Tours - Password Reset Request");
-        message.setText(
-            "Hello,\n\n" +
-            "You have requested to reset your password for your Sulul Tours account.\n\n" +
-            "Click the link below to reset your password:\n" +
-            resetLink + "\n\n" +
-            "This link will expire in 1 hour.\n\n" +
-            "If you did not request this, please ignore this email.\n\n" +
-            "Best regards,\n" +
-            "Sulul Tours Team"
-        );
+        // ✅ Use MimeMessage (like Kaafi Aqua)
+        MimeMessage message = mailSender.createMimeMessage();
+        MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+        helper.setTo(to);
+        helper.setSubject(subject);
+        helper.setText(content, true);  // true = HTML
+        helper.setFrom("noreply@sulultours.com");
+        helper.setReplyTo("sulultoursandtravel@gmail.com");
 
-        try {
-            mailSender.send(message);
-            log.info("✅ Password reset email sent to: {}", to);
-        } catch (Exception e) {
-            log.error("❌ Failed to send password reset email to {}: {}", to, e.getMessage());
-        }
+        mailSender.send(message);
+        log.info("✅ Password reset email sent to: {}", to);
+    } catch (Exception e) {
+        log.error("❌ Failed to send email to: {}", to, e);
     }
+}
 
     // ============================================
     // ✅ GENERIC SEND EMAIL METHOD
