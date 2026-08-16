@@ -138,6 +138,123 @@ const CarBookings = ({ setActiveTab }) => {
   const [calculatedCommission, setCalculatedCommission] = useState(0);
   const [selectedVehicleRate, setSelectedVehicleRate] = useState(0);
 
+  // ✅ ADD THIS useEffect HERE - Auto-recalculate days when dates change in CREATE modal
+  useEffect(() => {
+    if (formData.startDate && formData.endDate) {
+      const start = new Date(formData.startDate);
+      const end = new Date(formData.endDate);
+      
+      // Check if end date is before start date
+      if (end < start) {
+        showNotification('⚠️ End date must be on or after start date', 'error');
+        return;
+      }
+      
+      const days = calculateDays(formData.startDate, formData.endDate);
+      
+      setFormData(prev => ({ 
+        ...prev, 
+        days 
+      }));
+      
+      // Recalculate pricing if vehicle is selected
+      if (formData.vehicleId && days > 0) {
+        const vehicle = vehicles.find(v => v.id === formData.vehicleId);
+        if (vehicle) {
+          const pricePerDay = parseFloat(vehicle.pricePerDay) || 0;
+          const subtotal = pricePerDay * days;
+          setSelectedVehicleRate(pricePerDay);
+          setCalculatedSubtotal(subtotal);
+          
+          if (!formData.bookingFee) {
+  // ✅ Calculate discount correctly
+  let discountAmount = 0;
+  if (formData.discountType === 'PERCENTAGE') {
+    discountAmount = (subtotal * parseFloat(formData.discountValue || 0)) / 100;
+  } else if (formData.discountType === 'FIXED') {
+    discountAmount = parseFloat(formData.discountValue || 0) * days;
+  }
+  
+  const finalTotal = subtotal - discountAmount;
+  const dailyRateAfterDiscount = finalTotal / days;
+  
+  setFormData(prev => ({ 
+    ...prev, 
+    bookingFee: dailyRateAfterDiscount.toString(), // ✅ Show daily rate, not total
+    discountAmount: discountAmount,
+    remainingBalance: finalTotal
+  }));
+  setCalculatedCommission(0);
+} else {
+            const enteredFee = parseFloat(formData.bookingFee) || 0;
+            const discount = calculateDiscount(subtotal, formData.discountType, formData.discountValue, days);  
+            const expectedAfterDiscount = subtotal - discount;
+            
+            let finalTotal = 0;
+            if (enteredFee > 0 && pricePerDay > 0) {
+              if (Math.abs(enteredFee - pricePerDay) / pricePerDay < 0.5) {
+                finalTotal = enteredFee * days;
+              } else {
+                finalTotal = enteredFee;
+              }
+            } else {
+              finalTotal = expectedAfterDiscount;
+            }
+            
+            const commission = finalTotal - expectedAfterDiscount;
+            setFormData(prev => ({ 
+              ...prev, 
+              remainingBalance: finalTotal,
+              totalPriceDisplay: finalTotal
+            }));
+            setCalculatedCommission(commission);
+          }
+        }
+      }
+    }
+  }, [formData.startDate, formData.endDate, formData.vehicleId]); // ✅ Re-run when these change
+
+  // ✅ ADD THIS useEffect HERE - Auto-recalculate days when dates change in EDIT modal
+  useEffect(() => {
+    if (editFormData.startDate && editFormData.endDate) {
+      const start = new Date(editFormData.startDate);
+      const end = new Date(editFormData.endDate);
+      
+      // Check if end date is before start date
+      if (end < start) {
+        showNotification('⚠️ End date must be on or after start date', 'error');
+        return;
+      }
+      
+      const days = calculateDays(editFormData.startDate, editFormData.endDate);
+      
+      setEditFormData(prev => ({ 
+        ...prev, 
+        days 
+      }));
+      
+      // Recalculate pricing if vehicle is selected
+      if (editFormData.vehicleId && days > 0) {
+        const vehicle = vehicles.find(v => v.id === editFormData.vehicleId);
+        if (vehicle) {
+          const pricePerDay = parseFloat(vehicle.pricePerDay) || 0;
+          const subtotal = pricePerDay * days;
+          const discount = calculateDiscount(subtotal, editFormData.discountType, editFormData.discountValue, days);
+          const finalTotal = subtotal - discount;
+          
+          setEditFormData(prev => ({
+            ...prev,
+            bookingFee: prev.bookingFee || (finalTotal / days).toString(),
+            subtotal: subtotal,
+            totalPrice: finalTotal,
+            remainingBalance: finalTotal - (prev.paidAmount || 0)
+          }));
+        }
+      }
+    }
+  }, [editFormData.startDate, editFormData.endDate, editFormData.vehicleId]); // ✅ Re-run when these change
+
+
   useEffect(() => {
   const userData = currentUser || JSON.parse(localStorage.getItem('user') || '{}');
   const tid = userData?.tenantId || null;
@@ -434,84 +551,86 @@ const removeEditVehicleImage = (index) => {
   return Math.max(diffDays, 1);
 };
 
-  const calculateDiscount = (subtotal, type, value) => {
-    if (type === 'NONE' || !value) return 0;
-    if (type === 'PERCENTAGE') {
-      return (subtotal * parseFloat(value)) / 100;
-    }
-    if (type === 'FIXED') {
-      return parseFloat(value);
-    }
-    return 0;
-  };
+  const calculateDiscount = (subtotal, type, value, days = 1) => {
+  if (type === 'NONE' || !value) return 0;
+  if (type === 'PERCENTAGE') {
+    return (subtotal * parseFloat(value)) / 100;
+  }
+  if (type === 'FIXED') {
+    return parseFloat(value) * days;  // ✅ 'days' is now defined
+  }
+  return 0;
+};
 
   const handleDateChange = () => {
-    // ✅ ADD THIS VALIDATION AT THE START
-    if (formData.startDate && formData.endDate) {
-        const start = new Date(formData.startDate);
-        const end = new Date(formData.endDate);
-        
-        if (end <= start) {
-            showNotification('⚠️ End date must be after start date', 'error');
-            // Auto-correct: set end date to start date + 1 day
-            const nextDay = new Date(start);
-            nextDay.setDate(nextDay.getDate() + 1);
-            const nextDayStr = nextDay.toISOString().split('T')[0];
-            setFormData(prev => ({ 
-                ...prev, 
-                endDate: nextDayStr,
-                days: 1 
-            }));
-            return;
-        }
-    }
-    const days = calculateDays(formData.startDate, formData.endDate);
-    setFormData(prev => ({ ...prev, days }));
-    
-    if (formData.vehicleId && days > 0) {
-      const vehicle = vehicles.find(v => v.id === formData.vehicleId);
-      if (vehicle) {
-        const pricePerDay = parseFloat(vehicle.pricePerDay) || 0;
-        const subtotal = pricePerDay * days;
-        setSelectedVehicleRate(pricePerDay);
-        setCalculatedSubtotal(subtotal);
-        
-        if (!formData.bookingFee) {
-          const discount = calculateDiscount(subtotal, formData.discountType, formData.discountValue);
-          const finalTotal = subtotal - discount;
+  // ✅ ADD THIS VALIDATION AT THE START
+  if (formData.startDate && formData.endDate) {
+      const start = new Date(formData.startDate);
+      const end = new Date(formData.endDate);
+      
+      if (end <= start) {
+          showNotification('⚠️ End date must be after start date', 'error');
+          const nextDay = new Date(start);
+          nextDay.setDate(nextDay.getDate() + 1);
+          const nextDayStr = nextDay.toISOString().split('T')[0];
           setFormData(prev => ({ 
-            ...prev, 
-            bookingFee: finalTotal.toString(),
-            discountAmount: discount,
-            remainingBalance: finalTotal
+              ...prev, 
+              endDate: nextDayStr,
+              days: 1 
           }));
-          setCalculatedCommission(0);
-        } else {
-          const enteredFee = parseFloat(formData.bookingFee) || 0;
-          const discount = calculateDiscount(subtotal, formData.discountType, formData.discountValue);
-          const expectedAfterDiscount = subtotal - discount;
-          
-          let finalTotal = 0;
-          if (enteredFee > 0 && pricePerDay > 0) {
-            if (Math.abs(enteredFee - pricePerDay) / pricePerDay < 0.5) {
-              finalTotal = enteredFee * days;
-            } else {
-              finalTotal = enteredFee;
-            }
+          return;
+      }
+  }
+  const days = calculateDays(formData.startDate, formData.endDate);
+  setFormData(prev => ({ ...prev, days }));
+  
+  if (formData.vehicleId && days > 0) {
+    const vehicle = vehicles.find(v => v.id === formData.vehicleId);
+    if (vehicle) {
+      const pricePerDay = parseFloat(vehicle.pricePerDay) || 0;
+      const subtotal = pricePerDay * days;
+      setSelectedVehicleRate(pricePerDay);
+      setCalculatedSubtotal(subtotal);
+      
+      if (!formData.bookingFee) {
+        // ✅ Pass days to calculateDiscount
+        const discount = calculateDiscount(subtotal, formData.discountType, formData.discountValue, days);
+        const finalTotal = subtotal - discount;
+        const dailyRateAfterDiscount = finalTotal / days;
+        setFormData(prev => ({ 
+          ...prev, 
+          bookingFee: dailyRateAfterDiscount.toString(),  // ✅ Show daily rate
+          discountAmount: discount,
+          remainingBalance: finalTotal
+        }));
+        setCalculatedCommission(0);
+      } else {
+        const enteredFee = parseFloat(formData.bookingFee) || 0;
+        // ✅ Pass days to calculateDiscount
+        const discount = calculateDiscount(subtotal, formData.discountType, formData.discountValue, days);
+        const expectedAfterDiscount = subtotal - discount;
+        
+        let finalTotal = 0;
+        if (enteredFee > 0 && pricePerDay > 0) {
+          if (Math.abs(enteredFee - pricePerDay) / pricePerDay < 0.5) {
+            finalTotal = enteredFee * days;
           } else {
-            finalTotal = expectedAfterDiscount;
+            finalTotal = enteredFee;
           }
-          
-          const commission = finalTotal - expectedAfterDiscount;
-          setFormData(prev => ({ 
-            ...prev, 
-            remainingBalance: finalTotal
-          }));
-          setCalculatedCommission(commission);
+        } else {
+          finalTotal = expectedAfterDiscount;
         }
+        
+        const commission = finalTotal - expectedAfterDiscount;
+        setFormData(prev => ({ 
+          ...prev, 
+          remainingBalance: finalTotal
+        }));
+        setCalculatedCommission(commission);
       }
     }
-  };
+  }
+};
 
   const handleBookingFeeChange = (value) => {
   if (!value || value === '') {
@@ -526,12 +645,11 @@ const removeEditVehicleImage = (index) => {
   const pricePerDay = parseFloat(vehicle?.pricePerDay) || 0;
   
   const expectedPrice = pricePerDay * days;
-  const discount = calculateDiscount(expectedPrice, formData.discountType, formData.discountValue);
+  // ✅ Pass days to calculateDiscount
+  const discount = calculateDiscount(expectedPrice, formData.discountType, formData.discountValue, days);
   const expectedAfterDiscount = expectedPrice - discount;
   
   const finalTotal = enteredFee * days;
-  
-  // ✅ Commission should NEVER be negative
   const commission = Math.max(0, finalTotal - expectedAfterDiscount);
   
   setFormData(prev => ({ 
@@ -544,77 +662,78 @@ const removeEditVehicleImage = (index) => {
 };
 
   const handleDiscountChange = (type, value) => {
-    const vehicle = vehicles.find(v => v.id === formData.vehicleId);
-    const days = formData.days || 1;
-    const subtotal = vehicle ? (parseFloat(vehicle.pricePerDay) || 0) * days : 0;
-    const discount = calculateDiscount(subtotal, type, value);
-    
-    setFormData(prev => ({
-      ...prev,
-      discountType: type,
-      discountValue: value || '',
-      discountAmount: discount
-    }));
-    
-    if (formData.vehicleId && days > 0) {
-      const pricePerDay = parseFloat(vehicle?.pricePerDay) || 0;
-      const newSubtotal = pricePerDay * days;
-      const newDiscount = calculateDiscount(newSubtotal, type, value);
-      const newBookingFee = newSubtotal - newDiscount;
-      
-      setFormData(prev => ({
-        ...prev,
-        bookingFee: newBookingFee.toString(),
-        remainingBalance: newBookingFee
-      }));
-      setCalculatedCommission(0);
-    }
-  };
+  const vehicle = vehicles.find(v => v.id === formData.vehicleId);
+  const days = formData.days || 1;
+  const pricePerDay = parseFloat(vehicle?.pricePerDay) || 0;
+  const subtotal = pricePerDay * days;
+  
+  // ✅ Calculate discount correctly
+  let discountAmount = 0;
+  if (type === 'PERCENTAGE') {
+    discountAmount = (subtotal * parseFloat(value)) / 100;
+  } else if (type === 'FIXED') {
+    // ✅ FIXED discount is per day, so multiply by days
+    discountAmount = parseFloat(value) * days;
+  }
+  
+  const finalTotal = subtotal - discountAmount;
+  
+  setFormData(prev => ({
+    ...prev,
+    discountType: type,
+    discountValue: value || '',
+    discountAmount: discountAmount,
+    bookingFee: (finalTotal / days).toString(), // ✅ Show daily rate after discount
+    remainingBalance: finalTotal
+  }));
+  setCalculatedCommission(0);
+};
 
   const handleVehicleSelect = (vehicleId) => {
-    if (!vehicleId) {
-        setFormData(prev => ({ ...prev, vehicleId: '' }));
-        return;
+  if (!vehicleId) {
+    setFormData(prev => ({ ...prev, vehicleId: '' }));
+    return;
+  }
+  
+  // ✅ Check if vehicle is available for the selected dates
+  const isAvailable = isVehicleAvailableForDates(
+    vehicleId, 
+    formData.startDate, 
+    formData.endDate
+  );
+  
+  if (!isAvailable) {
+    // Find the conflicting bookings
+    const conflicts = getOverlappingBookings(vehicleId, formData.startDate, formData.endDate);
+    let conflictMessage = '❌ This vehicle is not available for the selected dates.';
+    if (conflicts.length > 0) {
+      const conflict = conflicts[0];
+      conflictMessage = `❌ This vehicle is booked from ${formatDateTime(conflict.startDate)} to ${formatDateTime(conflict.endDate)}. Please choose different dates or another vehicle.`;
     }
-    
-    // ✅ Check if vehicle is available for the selected dates
-    const isAvailable = isVehicleAvailableForDates(
-        vehicleId, 
-        formData.startDate, 
-        formData.endDate
-    );
-    
-    if (!isAvailable) {
-        // Find the conflicting bookings
-        const conflicts = getOverlappingBookings(vehicleId, formData.startDate, formData.endDate);
-        let conflictMessage = '❌ This vehicle is not available for the selected dates.';
-        if (conflicts.length > 0) {
-            const conflict = conflicts[0];
-            conflictMessage = `❌ This vehicle is booked from ${formatDateTime(conflict.startDate)} to ${formatDateTime(conflict.endDate)}. Please choose different dates or another vehicle.`;
-        }
-        showNotification(conflictMessage, 'error');
-        setFormData(prev => ({ ...prev, vehicleId: '' }));
-        return;
-    }
-    
-    const vehicle = vehicles.find(v => v.id === vehicleId);
-    const days = formData.days || 1;
-    const pricePerDay = parseFloat(vehicle?.pricePerDay) || 0;
-    const subtotal = pricePerDay * days;
-    const discount = calculateDiscount(subtotal, formData.discountType, formData.discountValue);
-    const bookingFee = subtotal - discount;
-    
-    setSelectedVehicleRate(pricePerDay);
-    setCalculatedSubtotal(subtotal);
-    
-    setFormData(prev => ({ 
-        ...prev, 
-        vehicleId,
-        bookingFee: bookingFee.toString(),
-        discountAmount: discount,
-        remainingBalance: bookingFee
-    }));
-    setCalculatedCommission(0);
+    showNotification(conflictMessage, 'error');
+    setFormData(prev => ({ ...prev, vehicleId: '' }));
+    return;
+  }
+  
+  const vehicle = vehicles.find(v => v.id === vehicleId);
+  const days = formData.days || 1;
+  const pricePerDay = parseFloat(vehicle?.pricePerDay) || 0;
+  const subtotal = pricePerDay * days;
+  // ✅ Pass days to calculateDiscount
+  const discount = calculateDiscount(subtotal, formData.discountType, formData.discountValue, days);
+  const bookingFee = subtotal - discount;
+  
+  setSelectedVehicleRate(pricePerDay);
+  setCalculatedSubtotal(subtotal);
+  
+  setFormData(prev => ({ 
+    ...prev, 
+    vehicleId,
+    bookingFee: bookingFee.toString(),
+    discountAmount: discount,
+    remainingBalance: bookingFee
+  }));
+  setCalculatedCommission(0);
 };
 
   const validateMpesaCode = (code) => {
@@ -629,15 +748,15 @@ const isVehicleAvailableForDates = (vehicleId, startDate, endDate) => {
     const start = new Date(startDate);
     const end = new Date(endDate);
     
-    // Check if start date is in the past
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    if (start < today) {
-        return false; // Can't book in the past
-    }
+    // // Check if start date is in the past
+    // const today = new Date();
+    // today.setHours(0, 0, 0, 0);
+    // if (start < today) {
+    //     return false; // Can't book in the past
+    // }
     
     // Check if end date is after start date
-    if (end <= start) {
+    if (end < start) {
         return false;
     }
     
@@ -739,21 +858,22 @@ const getAvailableVehiclesForDates = (startDate, endDate) => {
     return;
   }
 
-   // ✅ CHECK IF START DATE IS IN THE PAST
-  const start = new Date(formData.startDate);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  if (start < today) {
-    showNotification('⚠️ Start date cannot be in the past', 'error');
-    return;
-  }
+  //  // ✅ CHECK IF START DATE IS IN THE PAST
+  // const start = new Date(formData.startDate);
+  // const today = new Date();
+  // today.setHours(0, 0, 0, 0);
+  // if (start < today) {
+  //   showNotification('⚠️ Start date cannot be in the past', 'error');
+  //   return;
+  // }
 
   // ✅ CHECK IF END DATE IS AFTER START DATE
-  const end = new Date(formData.endDate);
-  if (end <= start) {
-    showNotification('⚠️ End date must be after start date', 'error');
-    return;
-  }
+const start = new Date(formData.startDate);  // ✅ ADD THIS LINE BACK
+const end = new Date(formData.endDate);
+if (end < start) {
+  showNotification('⚠️ End date must be on or after start date', 'error');
+  return;
+}
 
   // ✅ ADD THIS AVAILABILITY CHECK RIGHT HERE
   const startDateTime = `${formData.startDate}T${formData.startTime || '08:00'}`;
@@ -849,7 +969,7 @@ const getAvailableVehiclesForDates = (startDate, endDate) => {
       startDate: startDateISO,
       endDate: endDateISO,
       days: days || 1,
-      subtotal: expectedAfterDiscount || 0,
+      subtotal: expectedPrice || 0,
       discountType: formData.discountType || 'NONE',
       discountValue: formData.discountValue || '',
       discountAmount: discountAmount || 0,
@@ -911,21 +1031,22 @@ const handleEditBooking = async () => {
     return;
   }
 
-  // ✅ CHECK IF START DATE IS IN THE PAST
-  const start = new Date(editFormData.startDate);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  if (start < today) {
-    showNotification('⚠️ Start date cannot be in the past', 'error');
-    return;
-  }
+  // // ✅ CHECK IF START DATE IS IN THE PAST
+  // const start = new Date(editFormData.startDate);
+  // const today = new Date();
+  // today.setHours(0, 0, 0, 0);
+  // if (start < today) {
+  //   showNotification('⚠️ Start date cannot be in the past', 'error');
+  //   return;
+  // }
 
   // ✅ CHECK IF END DATE IS AFTER START DATE
-  const end = new Date(editFormData.endDate);
-  if (end <= start) {
-    showNotification('⚠️ End date must be after start date', 'error');
-    return;
-  }
+const start = new Date(editFormData.startDate);  // ✅ ADD THIS LINE BACK
+const end = new Date(editFormData.endDate);
+if (end < start) {
+  showNotification('⚠️ End date must be on or after start date', 'error');
+  return;
+}
 
   // ✅ ONLY CHECK AVAILABILITY IF DATES OR VEHICLE HAVE CHANGED
   const startDateTime = `${editFormData.startDate}T${editFormData.startTime || '08:00'}`;
@@ -974,7 +1095,14 @@ const handleEditBooking = async () => {
     const days = editFormData.days || calculateDays(editFormData.startDate, editFormData.endDate);
     
     const expectedPrice = pricePerDay * days;
-    const discountAmount = editFormData.discountAmount || 0;
+    let discountAmount = 0;
+if (editFormData.discountType === 'PERCENTAGE') {
+  discountAmount = (expectedPrice * parseFloat(editFormData.discountValue || 0)) / 100;
+} else if (editFormData.discountType === 'FIXED') {
+  discountAmount = parseFloat(editFormData.discountValue || 0) * days;
+} else {
+  discountAmount = editFormData.discountAmount || 0;
+}
     const expectedAfterDiscount = expectedPrice - discountAmount;
     
     let finalTotal = 0;
@@ -1020,7 +1148,7 @@ const handleEditBooking = async () => {
       startDate: startDateISO,
       endDate: endDateISO,
       days: days || 1,
-      subtotal: expectedAfterDiscount || 0,
+      subtotal: expectedPrice || 0,
       discountType: editFormData.discountType || 'NONE',
       discountValue: editFormData.discountValue || '',
       discountAmount: discountAmount || 0,
@@ -1940,15 +2068,13 @@ const handleEditBooking = async () => {
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">Start Date *</label>
                     <input
-                      type="date"
-                      value={formData.startDate}
-                      min={new Date().toISOString().split('T')[0]}  
-                      onChange={(e) => {
-                        setFormData({...formData, startDate: e.target.value});
-                        setTimeout(handleDateChange, 100);
-                      }}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                    />
+  type="date"
+  value={formData.startDate}
+  onChange={(e) => {
+    setFormData(prev => ({ ...prev, startDate: e.target.value }));
+  }}
+  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+/>
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">Start Time</label>
@@ -1962,15 +2088,13 @@ const handleEditBooking = async () => {
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">End Date *</label>
                     <input
-                      type="date"
-                      value={formData.endDate}
-                      min={formData.startDate || new Date().toISOString().split('T')[0]}
-                      onChange={(e) => {
-                        setFormData({...formData, endDate: e.target.value});
-                        setTimeout(handleDateChange, 100);
-                      }}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                    />
+  type="date"
+  value={formData.endDate}
+  onChange={(e) => {
+    setFormData(prev => ({ ...prev, endDate: e.target.value }));
+  }}
+  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+/>
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">End Time</label>
@@ -2039,7 +2163,7 @@ const handleEditBooking = async () => {
 
               {/* Discount Section */}
               <div>
-                <h3 className="text-sm font-semibold text-gray-700 mb-2">Discount</h3>
+                <h3 className="text-sm font-semibold text-gray-700 mb-2">Discount(Per Day)</h3>
                 <div className="flex flex-wrap gap-2 mb-3">
                   <button
                     onClick={() => handleDiscountChange('NONE', '')}
@@ -2705,18 +2829,13 @@ const handleEditBooking = async () => {
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Start Date *</label>
               <input
-                type="date"
-                value={editFormData.startDate}
-                onChange={(e) => {
-  const newStartDate = e.target.value;
-  setEditFormData(prev => ({...prev, startDate: newStartDate}));
-  setTimeout(() => {
-    const days = calculateDays(newStartDate, editFormData.endDate);
-    setEditFormData(prev => ({...prev, days}));
-  }, 100);
-}}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-              />
+  type="date"
+  value={editFormData.startDate}
+  onChange={(e) => {
+    setEditFormData(prev => ({ ...prev, startDate: e.target.value }));
+  }}
+  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+/>
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Start Time</label>
@@ -2730,18 +2849,13 @@ const handleEditBooking = async () => {
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">End Date *</label>
               <input
-                type="date"
-                value={editFormData.endDate}
-                onChange={(e) => {
-  const newEndDate = e.target.value;
-  setEditFormData(prev => ({...prev, endDate: newEndDate}));
-  setTimeout(() => {
-    const days = calculateDays(editFormData.startDate, newEndDate);
-    setEditFormData(prev => ({...prev, days}));
-  }, 100);
-}}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-              />
+  type="date"
+  value={editFormData.endDate}
+  onChange={(e) => {
+    setEditFormData(prev => ({ ...prev, endDate: e.target.value }));
+  }}
+  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+/>
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">End Time</label>
@@ -2816,28 +2930,37 @@ const handleEditBooking = async () => {
             </button>
           </div>
           {editFormData.discountType !== 'NONE' && (
-            <input
-              type="number"
-              value={editFormData.discountValue}
-              onChange={(e) => {
-                const value = e.target.value;
-                const vehicle = vehicles.find(v => v.id === editFormData.vehicleId);
-                const days = editFormData.days || 1;
-                const subtotal = vehicle ? (parseFloat(vehicle.pricePerDay) || 0) * days : 0;
-                let discountAmount = 0;
-                if (editFormData.discountType === 'PERCENTAGE') {
-                  discountAmount = (subtotal * parseFloat(value)) / 100;
-                } else if (editFormData.discountType === 'FIXED') {
-                  discountAmount = parseFloat(value) || 0;
-                }
-                setEditFormData(prev => ({...prev, discountValue: value, discountAmount}));
-              }}
-              placeholder={editFormData.discountType === 'PERCENTAGE' ? 'Enter percentage' : 'Enter amount in KES'}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-              min="0"
-              step={editFormData.discountType === 'PERCENTAGE' ? '1' : '50'}
-            />
-          )}
+  <input
+    type="number"
+    value={editFormData.discountValue}
+    onChange={(e) => {
+      const value = e.target.value;
+      const vehicle = vehicles.find(v => v.id === editFormData.vehicleId);
+      const days = editFormData.days || 1;
+      const subtotal = vehicle ? (parseFloat(vehicle.pricePerDay) || 0) * days : 0;
+      let discountAmount = 0;
+      if (editFormData.discountType === 'PERCENTAGE') {
+        discountAmount = (subtotal * parseFloat(value)) / 100;
+      } else if (editFormData.discountType === 'FIXED') {
+        discountAmount = (parseFloat(value) || 0) * days;  // ✅ FIXED discount multiplied by days
+      }
+      const finalTotal = subtotal - discountAmount;
+      const dailyRateAfterDiscount = finalTotal / days;
+      
+      setEditFormData(prev => ({
+        ...prev,
+        discountValue: value,
+        discountAmount: discountAmount,
+        bookingFee: dailyRateAfterDiscount.toString(), // ✅ Show daily rate after discount
+        remainingBalance: finalTotal - (prev.paidAmount || 0)
+      }));
+    }}
+    placeholder={editFormData.discountType === 'PERCENTAGE' ? 'Enter percentage' : 'Enter amount in KES'}
+    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+    min="0"
+    step={editFormData.discountType === 'PERCENTAGE' ? '1' : '50'}
+  />
+)}
         </div>
 
                       {/* Vehicle Condition Images */}

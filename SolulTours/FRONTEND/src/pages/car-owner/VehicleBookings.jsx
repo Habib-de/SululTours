@@ -225,37 +225,42 @@ const VehicleBookings = ({ setActiveTab }) => {
 
   // ✅ Calculate total discount correctly (percentage of total, not per day)
   const totalDiscount = bookings.reduce((sum, b) => {
-    const dailyRate = b.vehiclePricePerDay || 0;
-    const days = b.days || 0;
-    const baseEarnings = dailyRate * days;
-    
-    if (b.discountType === 'PERCENTAGE') {
-      const discountPercent = parseFloat(b.discountValue) || 0;
-      return sum + (baseEarnings * discountPercent / 100);
-    } else if (b.discountType === 'FIXED') {
-      return sum + ((b.discountAmount || 0) * days);
-    }
+  const dailyRate = b.vehiclePricePerDay || 0;
+  const days = b.days || 0;
+  const baseEarnings = dailyRate * days;
+  
+  if (b.discountType === 'PERCENTAGE') {
+    const discountPercent = parseFloat(b.discountValue) || 0;
+    return sum + (baseEarnings * discountPercent / 100);
+  } else if (b.discountType === 'FIXED') {
+    // ✅ b.discountAmount is already the total discount (value * days)
     return sum + (b.discountAmount || 0);
-  }, 0);
+  }
+  return sum + (b.discountAmount || 0);
+}, 0);
 
   // ✅ Calculate total revenue correctly
   const totalRevenue = bookings.reduce((sum, b) => {
-    const dailyRate = b.vehiclePricePerDay || 0;
-    const days = b.days || 0;
-    const baseEarnings = dailyRate * days;
-    
-    let discount = 0;
-    if (b.discountType === 'PERCENTAGE') {
-      const discountPercent = parseFloat(b.discountValue) || 0;
-      discount = baseEarnings * discountPercent / 100;
-    } else if (b.discountType === 'FIXED') {
-      discount = (b.discountAmount || 0) * days;
-    } else {
-      discount = b.discountAmount || 0;
-    }
-    
-    return sum + (baseEarnings - discount);
-  }, 0);
+  // Use totalPrice if available (more accurate), otherwise calculate
+  if (b.totalPrice !== undefined && b.totalPrice !== null && b.totalPrice > 0) {
+    return sum + b.totalPrice;
+  }
+  const dailyRate = b.vehiclePricePerDay || 0;
+  const days = b.days || 0;
+  const baseEarnings = dailyRate * days;
+  
+  let discount = 0;
+  if (b.discountType === 'PERCENTAGE') {
+    const discountPercent = parseFloat(b.discountValue) || 0;
+    discount = baseEarnings * discountPercent / 100;
+  } else if (b.discountType === 'FIXED') {
+    discount = b.discountAmount || 0;  // ✅ Fixed - use directly
+  } else {
+    discount = b.discountAmount || 0;
+  }
+  
+  return sum + (baseEarnings - discount);
+}, 0);
 
   const totalDebt = bookings.reduce((sum, b) => {
     const remainingBalance = b.remainingBalance || 0;
@@ -326,88 +331,84 @@ const VehicleBookings = ({ setActiveTab }) => {
                 </div>
               </div>
 
-              {/* ✅ DISCOUNT & EARNINGS SECTION - Fixed calculation */}
-              <div>
-                <h3 className="text-sm font-semibold text-gray-700 mb-2">Earnings & Discounts</h3>
-                <div className="grid grid-cols-2 gap-3 bg-gray-50 rounded-lg p-4">
-                  <div className="col-span-2">
-                    <span className="text-xs text-gray-500">Base Earnings (Daily Rate × Days):</span>
-                    <span className="text-sm font-medium ml-1">
-                      KSh {((selectedBooking.vehiclePricePerDay || 0) * (selectedBooking.days || 0)).toLocaleString()}
-                    </span>
-                  </div>
-                  
-                  {selectedBooking.discountAmount > 0 && (
-                    <>
-                      <div className="col-span-2">
-                        <span className="text-xs text-red-500">Discount Applied:</span>
-                        <span className="text-sm font-medium text-red-500 ml-1">
-                          -KSh {(() => {
-                            const base = (selectedBooking.vehiclePricePerDay || 0) * (selectedBooking.days || 0);
-                            if (selectedBooking.discountType === 'PERCENTAGE') {
-                              return (base * parseFloat(selectedBooking.discountValue || 0) / 100).toLocaleString();
-                            } else if (selectedBooking.discountType === 'FIXED') {
-                              return ((selectedBooking.discountAmount || 0) * (selectedBooking.days || 1)).toLocaleString();
-                            }
-                            return (selectedBooking.discountAmount || 0).toLocaleString();
-                          })()}
-                        </span>
-                        <span className="text-xs text-gray-400 ml-2">
-                          ({selectedBooking.discountType === 'PERCENTAGE' ? `${selectedBooking.discountValue}% of total` : 
-                            selectedBooking.discountType === 'FIXED' ? `KES ${selectedBooking.discountValue}/day` : 'None'})
-                        </span>
-                      </div>
-                      <div className="col-span-2 border-t border-gray-200 pt-1">
-                        <span className="text-xs font-bold text-green-600">Your Final Earnings:</span>
-                        <span className="text-sm font-bold text-green-600 ml-1">
-                          KSh {(() => {
-                            const base = (selectedBooking.vehiclePricePerDay || 0) * (selectedBooking.days || 0);
-                            let discount = 0;
-                            if (selectedBooking.discountType === 'PERCENTAGE') {
-                              discount = base * parseFloat(selectedBooking.discountValue || 0) / 100;
-                            } else if (selectedBooking.discountType === 'FIXED') {
-                              discount = (selectedBooking.discountAmount || 0) * (selectedBooking.days || 1);
-                            } else {
-                              discount = selectedBooking.discountAmount || 0;
-                            }
-                            return (base - discount).toLocaleString();
-                          })()}
-                        </span>
-                      </div>
-                    </>
-                  )}
-                  
-                  {(selectedBooking.commission || 0) > 0 && (
-                    <div className="col-span-2">
-                      <span className="text-xs text-orange-500">Fleet Manager Commission:</span>
-                      <span className="text-sm font-medium text-orange-500 ml-1">
-                        +KSh {selectedBooking.commission.toLocaleString()}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </div>
+              {/* ✅ EARNINGS SECTION - Car Owner Only */}
+<div>
+  <h3 className="text-sm font-semibold text-gray-700 mb-2">Earnings</h3>
+  <div className="grid grid-cols-2 gap-3 bg-gray-50 rounded-lg p-4">
+    <div className="col-span-2">
+      <span className="text-xs text-gray-500">Daily Rate:</span>
+      <span className="text-sm font-medium ml-1 text-blue-600">KSh {selectedBooking.vehiclePricePerDay?.toLocaleString() || 0}</span>
+    </div>
+    <div>
+      <span className="text-xs text-gray-500">Days:</span>
+      <span className="text-sm font-medium ml-1">{selectedBooking.days || 0} days</span>
+    </div>
+    
+    {/* Base Earnings */}
+    <div>
+      <span className="text-xs text-gray-500">Base Earnings:</span>
+      <span className="text-sm font-medium text-gray-700 ml-1">
+        KSh {((selectedBooking.vehiclePricePerDay || 0) * (selectedBooking.days || 0)).toLocaleString()}
+      </span>
+    </div>
+    
+    {/* Discount if any */}
+    {selectedBooking.discountAmount > 0 && (
+  <>
+    <div className="col-span-2 border-t border-gray-200 pt-2 mt-1">
+      <span className="text-xs text-red-500">Discount Applied:</span>
+      <span className="text-sm font-medium text-red-500 ml-1">
+        -KSh {(() => {
+          const base = (selectedBooking.vehiclePricePerDay || 0) * (selectedBooking.days || 0);
+          if (selectedBooking.discountType === 'PERCENTAGE') {
+            return (base * parseFloat(selectedBooking.discountValue || 0) / 100).toLocaleString();
+          } else if (selectedBooking.discountType === 'FIXED') {
+            return (selectedBooking.discountAmount || 0).toLocaleString();  // ✅ Fixed - use directly
+          }
+          return (selectedBooking.discountAmount || 0).toLocaleString();
+        })()}
+      </span>
+      <span className="text-xs text-gray-400 ml-2">
+        ({selectedBooking.discountType === 'PERCENTAGE' ? `${selectedBooking.discountValue}% off` : 
+          selectedBooking.discountType === 'FIXED' ? `KES ${selectedBooking.discountValue}/day` : 'None'})
+      </span>
+    </div>
+    <div className="col-span-2 border-t border-gray-200 pt-2 mt-1">
+      <span className="text-xs font-bold text-green-600">Final Earnings:</span>
+      <span className="text-sm font-bold text-green-600 ml-1">
+        KSh {(() => {
+          const base = (selectedBooking.vehiclePricePerDay || 0) * (selectedBooking.days || 0);
+          let discount = 0;
+          if (selectedBooking.discountType === 'PERCENTAGE') {
+            discount = base * parseFloat(selectedBooking.discountValue || 0) / 100;
+          } else if (selectedBooking.discountType === 'FIXED') {
+            discount = selectedBooking.discountAmount || 0;  // ✅ Fixed - use directly
+          } else {
+            discount = selectedBooking.discountAmount || 0;
+          }
+          return (base - discount).toLocaleString();
+        })()}
+      </span>
+    </div>
+  </>
+)}
+  </div>
+</div>
 
               {/* Payment Info */}
-              <div>
-                <h3 className="text-sm font-semibold text-gray-700 mb-2">Payment Information</h3>
-                <div className="grid grid-cols-2 gap-3 bg-gray-50 rounded-lg p-4">
-                  <div><span className="text-xs text-gray-500">Method:</span> <span className="text-sm font-medium flex items-center gap-1">{getPaymentMethodIcon(selectedBooking.paymentMethod)} {selectedBooking.paymentMethod || 'N/A'}</span></div>
-                  <div><span className="text-xs text-gray-500">Status:</span> <span className={`text-sm font-medium px-2 py-0.5 rounded-full ${getPaymentStatusBadge(selectedBooking.paymentStatus).color}`}>{getPaymentStatusBadge(selectedBooking.paymentStatus).label}</span></div>
-                  {(selectedBooking.remainingBalance || 0) > 0 && (
-                    <div className="col-span-2">
-                      <span className="text-xs text-gray-500">Remaining Balance (Debt):</span>
-                      <span className="text-sm font-bold text-red-600 ml-1">KES {selectedBooking.remainingBalance?.toLocaleString() || 0}</span>
-                    </div>
-                  )}
-                  {(selectedBooking.paidAmount || 0) > 0 && (
-                    <div className="col-span-2">
-                      <span className="text-xs text-gray-500">Amount Paid:</span>
-                      <span className="text-sm font-medium text-green-600 ml-1">KES {(selectedBooking.paidAmount || 0).toLocaleString()}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
+<div>
+  <h3 className="text-sm font-semibold text-gray-700 mb-2">Payment Information</h3>
+  <div className="grid grid-cols-2 gap-3 bg-gray-50 rounded-lg p-4">
+    <div><span className="text-xs text-gray-500">Method:</span> <span className="text-sm font-medium flex items-center gap-1">{getPaymentMethodIcon(selectedBooking.paymentMethod)} {selectedBooking.paymentMethod || 'N/A'}</span></div>
+    <div><span className="text-xs text-gray-500">Status:</span> <span className={`text-sm font-medium px-2 py-0.5 rounded-full ${getPaymentStatusBadge(selectedBooking.paymentStatus).color}`}>{getPaymentStatusBadge(selectedBooking.paymentStatus).label}</span></div>
+    {(selectedBooking.remainingBalance || 0) > 0 && (
+      <div className="col-span-2">
+        <span className="text-xs text-gray-500">Remaining Balance (Debt):</span>
+        <span className="text-sm font-bold text-red-600 ml-1">KES {selectedBooking.remainingBalance?.toLocaleString() || 0}</span>
+      </div>
+    )}
+  </div>
+</div>
             </div>
             <div className="sticky bottom-0 bg-gray-50 border-t border-gray-200 px-6 py-3 flex justify-end">
               <button onClick={() => setShowDetailModal(false)} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm">
@@ -551,14 +552,16 @@ const VehicleBookings = ({ setActiveTab }) => {
                     const baseEarnings = (booking.vehiclePricePerDay || 0) * (booking.days || 0);
                     
                     let discountAmount = 0;
-                    if (booking.discountType === 'PERCENTAGE') {
-                      const discountPercent = parseFloat(booking.discountValue) || 0;
-                      discountAmount = baseEarnings * discountPercent / 100;
-                    } else if (booking.discountType === 'FIXED') {
-                      discountAmount = (booking.discountAmount || 0) * (booking.days || 1);
-                    } else {
-                      discountAmount = booking.discountAmount || 0;
-                    }
+if (booking.discountType === 'PERCENTAGE') {
+  const discountPercent = parseFloat(booking.discountValue) || 0;
+  discountAmount = baseEarnings * discountPercent / 100;
+} else if (booking.discountType === 'FIXED') {
+  // ✅ booking.discountAmount is already the total discount (value * days)
+  // So just use it directly
+  discountAmount = booking.discountAmount || 0;
+} else {
+  discountAmount = booking.discountAmount || 0;
+}
                     
                     const finalEarnings = baseEarnings - discountAmount;
 
