@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { bookingService, vehicleService, carOwnerService } from '../../services/api';
+import TermsAndConditions from '../../components/common/TermsAndConditions';
 
 // Helper to format date with time
 const formatDateTime = (dateString) => {
@@ -35,6 +36,25 @@ const generateReference = () => {
   return 'BK-' + Date.now().toString(36).toUpperCase() + '-' + Math.random().toString(36).substring(2, 6).toUpperCase();
 };
 
+// Helper to format date with Kenya timezone
+const formatKenyaTime = (dateString) => {
+  if (!dateString) return 'N/A';
+  try {
+    const date = new Date(dateString);
+    return date.toLocaleString('en-KE', {
+      timeZone: 'Africa/Nairobi',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+  } catch (e) {
+    return dateString;
+  }
+};
+
 const CarBookings = ({ setActiveTab }) => {
   const { currentUser } = useAuth();
   const [bookings, setBookings] = useState([]);
@@ -54,6 +74,8 @@ const CarBookings = ({ setActiveTab }) => {
   const [tenantId, setTenantId] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingBooking, setEditingBooking] = useState(null);
+  const [showTermsModal, setShowTermsModal] = useState(false);
+  const [pendingBookingAction, setPendingBookingAction] = useState(null);
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -907,6 +929,14 @@ if (end < start) {
     }
   }
 
+  
+  
+  setShowTermsModal(true);
+  setPendingBookingAction('create');
+};
+
+// Perform the actual booking creation after terms are accepted
+const performCreateBooking = async (signatureData = null) => {
   setIsSubmitting(true);
 
   try {
@@ -914,7 +944,6 @@ if (end < start) {
     const endDateTime = `${formData.endDate}T${formData.endTime || '18:00'}`;
 
     const vehicle = vehicles.find(v => v.id === formData.vehicleId);
-    const owner = carOwners.find(o => o.id === vehicle?.ownerId);
     const pricePerDay = parseFloat(vehicle?.pricePerDay) || 0;
     const days = formData.days || calculateDays(formData.startDate, formData.endDate);
     
@@ -930,7 +959,6 @@ if (end < start) {
       finalTotal = expectedAfterDiscount;
     }
     
-    // ✅ Commission should NEVER be negative
     const commission = Math.max(0, finalTotal - expectedAfterDiscount);
 
     let paidAmount = 0;
@@ -947,10 +975,6 @@ if (end < start) {
       paymentStatus = 'PAID';
     }
 
-    // ✅ Convert dates to proper ISO format
-    const startDateISO = startDateTime;
-    const endDateISO = endDateTime;
-
     const newBooking = {
       reference: generateReference(),
       customerName: formData.customerName,
@@ -966,8 +990,8 @@ if (end < start) {
       vehicleModel: vehicle?.model || '',
       vehiclePricePerDay: pricePerDay || 0,
       ownerId: vehicle?.ownerId || '',
-      startDate: startDateISO,
-      endDate: endDateISO,
+      startDate: startDateTime,
+      endDate: endDateTime,
       days: days || 1,
       subtotal: expectedPrice || 0,
       discountType: formData.discountType || 'NONE',
@@ -975,7 +999,7 @@ if (end < start) {
       discountAmount: discountAmount || 0,
       totalPrice: finalTotal || 0,
       bookingFeePerDay: formData.bookingFee ? parseFloat(formData.bookingFee) : null,
-      commission: commission, // ✅ Will be 0 if negative
+      commission: commission,
       paymentMethod: formData.paymentMethod || 'CASH',
       paymentStatus: paymentStatus || 'PENDING',
       mpesaCode: formData.mpesaCode || '',
@@ -988,7 +1012,11 @@ if (end < start) {
       status: 'pending',
       serviceType: 'car_hire',
       isGuestBooking: false,
-      tenantId: tenantId
+      tenantId: tenantId,
+      termsAccepted: true,
+      termsAcceptedAt: new Date().toISOString(),
+      termsVersion: "1.0",
+      customerSignature: signatureData
     };
 
     console.log('📤 Creating booking:', newBooking);
@@ -1084,6 +1112,14 @@ if (end < start) {
     }
   }
 
+  
+  
+  setShowTermsModal(true);
+  setPendingBookingAction('edit');
+};
+
+// Perform the actual booking update after terms are accepted
+const performEditBooking = async (signatureData = null) => {
   setIsSubmitting(true);
 
   try {
@@ -1096,13 +1132,13 @@ if (end < start) {
     
     const expectedPrice = pricePerDay * days;
     let discountAmount = 0;
-if (editFormData.discountType === 'PERCENTAGE') {
-  discountAmount = (expectedPrice * parseFloat(editFormData.discountValue || 0)) / 100;
-} else if (editFormData.discountType === 'FIXED') {
-  discountAmount = parseFloat(editFormData.discountValue || 0) * days;
-} else {
-  discountAmount = editFormData.discountAmount || 0;
-}
+    if (editFormData.discountType === 'PERCENTAGE') {
+      discountAmount = (expectedPrice * parseFloat(editFormData.discountValue || 0)) / 100;
+    } else if (editFormData.discountType === 'FIXED') {
+      discountAmount = parseFloat(editFormData.discountValue || 0) * days;
+    } else {
+      discountAmount = editFormData.discountAmount || 0;
+    }
     const expectedAfterDiscount = expectedPrice - discountAmount;
     
     let finalTotal = 0;
@@ -1126,10 +1162,6 @@ if (editFormData.discountType === 'PERCENTAGE') {
       paymentStatus = 'PARTIAL';
     }
 
-    const startDateISO = startDateTime;
-    const endDateISO = endDateTime;
-
-
     const updatedBooking = {
       ...editingBooking,
       customerName: editFormData.customerName,
@@ -1145,8 +1177,8 @@ if (editFormData.discountType === 'PERCENTAGE') {
       vehicleModel: vehicle?.model || '',
       vehiclePricePerDay: pricePerDay || 0,
       ownerId: vehicle?.ownerId || '',
-      startDate: startDateISO,
-      endDate: endDateISO,
+      startDate: startDateTime,
+      endDate: endDateTime,
       days: days || 1,
       subtotal: expectedPrice || 0,
       discountType: editFormData.discountType || 'NONE',
@@ -1164,6 +1196,10 @@ if (editFormData.discountType === 'PERCENTAGE') {
         ? JSON.stringify(editFormData.vehicleConditionImages) 
         : null,
       notes: editFormData.notes || '',
+      termsAccepted: true,
+      termsAcceptedAt: new Date().toISOString(),
+      termsVersion: "1.0",
+      customerSignature: signatureData 
     };
 
     console.log('📤 Updating booking:', updatedBooking);
@@ -1185,6 +1221,23 @@ if (editFormData.discountType === 'PERCENTAGE') {
   }
   
   setIsSubmitting(false);
+};
+
+// Terms and conditions handlers
+const handleTermsAccept = (signatureData) => {
+  setShowTermsModal(false);
+  if (pendingBookingAction === 'create') {
+    performCreateBooking(signatureData);
+  } else if (pendingBookingAction === 'edit') {
+    performEditBooking(signatureData);
+  }
+  setPendingBookingAction(null);
+};
+
+const handleTermsDecline = () => {
+  setShowTermsModal(false);
+  setPendingBookingAction(null);
+  showNotification('You must accept the terms and conditions to proceed.', 'error');
 };
 
   const handleRecordPayment = async () => {
@@ -1505,6 +1558,36 @@ if (editFormData.discountType === 'PERCENTAGE') {
           ${booking.mpesaCode ? `<div class="row"><span class="label">M-Pesa Code:</span> <span class="value">${booking.mpesaCode}</span></div>` : ''}
           ${booking.commission > 0 ? `<div class="row"><span class="label">Commission:</span> <span class="value">KSh ${(booking.commission || 0).toLocaleString()}</span></div>` : ''}
         </div>
+
+        <!-- Terms & Conditions Agreement -->
+<div class="section">
+  <h2>📋 Terms & Conditions Agreement</h2>
+  ${booking.termsAccepted ? `
+    <div class="row"><span class="label">Terms Accepted:</span> <span class="value">✅ Yes</span></div>
+    <div class="row"><span class="label">Accepted At:</span> <span class="value">${booking.termsAcceptedAt ? new Date(booking.termsAcceptedAt).toLocaleString('en-KE', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    }) : 'N/A'}</span></div>
+    <div class="row"><span class="label">Terms Version:</span> <span class="value">${booking.termsVersion || '1.0'}</span></div>
+  ` : `
+    <div class="row"><span class="label">Terms Accepted:</span> <span class="value">❌ Not Accepted</span></div>
+  `}
+  
+  ${booking.customerSignature ? `
+    <div class="row" style="margin-top: 10px;">
+      <span class="label">Customer Signature:</span>
+      <div style="text-align: right;">
+        <img src="${booking.customerSignature}" alt="Customer Signature" style="max-height: 60px; border: 1px solid #ddd; border-radius: 4px; padding: 4px; background: white;" />
+      </div>
+    </div>
+  ` : `
+    <div class="row"><span class="label">Customer Signature:</span> <span class="value">No signature</span></div>
+  `}
+</div>
 
         <!-- ✅ SIGNATURE SECTION -->
         <div class="signature-section">
@@ -2472,6 +2555,56 @@ if (editFormData.discountType === 'PERCENTAGE') {
                   </div>
                 </div>
               )}
+
+              {/* Terms & Conditions Information */}
+{(selectedBooking.termsAccepted || selectedBooking.customerSignature) && (
+  <div>
+    <div className="flex items-center justify-between mb-2">
+      <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+        <FileText size={16} className="text-blue-600" />
+        Terms & Conditions Agreement
+      </h3>
+      <button
+  onClick={() => {
+    setShowTermsModal(true);
+    setPendingBookingAction('view');  // ✅ ADD THIS
+  }}
+  className="text-xs text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
+>
+  <FileText size={12} />
+  View Full Terms
+</button>
+    </div>
+    <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+      {selectedBooking.termsAccepted && (
+        <div className="flex items-center gap-2 text-sm">
+          <CheckCircle size={16} className="text-green-600" />
+          <span className="text-gray-700">Terms Accepted</span>
+          <span className="text-xs text-gray-400 ml-auto">
+            {selectedBooking.termsAcceptedAt ? formatKenyaTime(selectedBooking.termsAcceptedAt) : 'N/A'}
+          </span>
+        </div>
+      )}
+      {selectedBooking.termsVersion && (
+        <div className="flex items-center gap-2 text-sm">
+          <FileText size={14} className="text-gray-500" />
+          <span className="text-gray-700">Terms Version:</span>
+          <span className="text-sm font-medium text-gray-900">{selectedBooking.termsVersion}</span>
+        </div>
+      )}
+      {selectedBooking.customerSignature && (
+        <div className="mt-2 pt-2 border-t border-gray-200">
+          <p className="text-sm text-gray-700 mb-1">Customer Signature:</p>
+          <img 
+            src={selectedBooking.customerSignature} 
+            alt="Customer Signature" 
+            className="max-h-16 border rounded p-1 bg-white object-contain"
+          />
+        </div>
+      )}
+    </div>
+  </div>
+)}
             </div>
             <div className="sticky bottom-0 bg-gray-50 border-t border-gray-200 px-6 py-3 flex justify-end gap-2">
               <button onClick={() => setShowDetailModal(false)} className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors text-sm">
@@ -2591,6 +2724,22 @@ if (editFormData.discountType === 'PERCENTAGE') {
           </div>
         </div>
       )}
+
+      
+      {/* ================================================================ */}
+{/* TERMS AND CONDITIONS MODAL */}
+{/* ================================================================ */}
+<TermsAndConditions
+  isOpen={showTermsModal}
+  onClose={() => {
+    setShowTermsModal(false);
+    setPendingBookingAction(null);
+  }}
+  onAccept={handleTermsAccept}
+  onDecline={handleTermsDecline}
+  title="Hire Agreement Terms & Conditions"
+  serviceType="car_hire"
+/>
 
       {/* ================================================================ */}
 {/* EDIT BOOKING MODAL */}

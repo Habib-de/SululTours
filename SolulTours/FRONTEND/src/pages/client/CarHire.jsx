@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { vehicleService, bookingService } from '../../services/api';
+import TermsAndConditions from '../../components/common/TermsAndConditions';
 
 const CarHire = ({ setActiveTab, user }) => {
   const { currentUser } = useAuth();
@@ -32,6 +33,8 @@ const CarHire = ({ setActiveTab, user }) => {
   const [loggedInUser, setLoggedInUser] = useState(null);
   const [tenantId, setTenantId] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Terms and conditions state
+  const [showTermsModal, setShowTermsModal] = useState(false);
   
   // Booking form state
   const [bookingForm, setBookingForm] = useState({
@@ -581,47 +584,111 @@ if (!isVehicleAvailableForDates(selectedVehicle.id, startDateTime, endDateTime))
       tenantId: tenantId
     };
 
-    setIsSubmitting(true);
-
-    try {
-      console.log('📤 Creating booking:', newBooking);
-      const response = await bookingService.create(newBooking);
-
-      if (response?.success) {
-        showNotification(`✅ Booking confirmed! Reference: ${ref}`);
-        loadData(tenantId);
-        setShowBookingModal(false);
-        setSelectedVehicle(null);
-        setCalculatedTotal(0);
-        setDays(0);
-        setIdImagePreview(null);
-        setLicenseImagePreview(null);
-        
-        const userToKeep = loggedInUser || user || currentUser;
-        setBookingForm({
-          startDate: '',
-          endDate: '',
-          startTime: '08:00',
-          endTime: '18:00',
-          notes: '',
-          paymentMethod: 'CASH',
-          mpesaCode: '',
-          customerName: userToKeep?.name || '',
-          customerEmail: userToKeep?.email || '',
-          customerPhone: userToKeep?.phone || '',
-          customerIdNumber: '',
-          customerLicenseNumber: '',
-          customerIdImage: null,
-          customerLicenseImage: null
-        });
-      } else {
-        showNotification('Failed to create booking: ' + (response?.message || 'Unknown error'), 'error');
-      }
-    } catch (error) {
-      console.error('Error creating booking:', error);
-      showNotification('Failed to create booking. Please try again.', 'error');
-    }
+        // ✅ If all validation passes, show terms modal
+    setShowTermsModal(true);
   }, [bookingForm, selectedVehicle, loggedInUser, user, currentUser, tenantId]);
+
+  // Perform the actual booking after terms are accepted
+const performCarHireBooking = useCallback(async (signatureData = null) => {
+  setIsSubmitting(true);
+
+  const daysCount = calculateDays(bookingForm.startDate, bookingForm.endDate);
+  const totalAmount = selectedVehicle.pricePerDay * daysCount;
+  const ref = `BOOK-${Date.now().toString().slice(-6)}-${Math.random().toString(36).substr(2, 4).toUpperCase()}`;
+
+  const currentUser = loggedInUser || user || currentUser;
+  const startDateTime = `${bookingForm.startDate}T${bookingForm.startTime || '08:00'}`;
+  const endDateTime = `${bookingForm.endDate}T${bookingForm.endTime || '18:00'}`;
+
+  const newBooking = {
+    reference: ref,
+    serviceType: 'car_hire',
+    vehicleId: selectedVehicle.id,
+    customerName: bookingForm.customerName,
+    customerEmail: bookingForm.customerEmail,
+    customerPhone: bookingForm.customerPhone,
+    customerIdNumber: bookingForm.customerIdNumber || '',
+    customerLicenseNumber: bookingForm.customerLicenseNumber || '',
+    customerIdImage: bookingForm.customerIdImage || null,
+    customerLicenseImage: bookingForm.customerLicenseImage || null,
+    startDate: startDateTime,
+    endDate: endDateTime,
+    days: daysCount,
+    totalPrice: totalAmount,
+    paymentMethod: bookingForm.paymentMethod,
+    paymentStatus: bookingForm.paymentMethod === 'CREDIT' ? 'PENDING' : 'PAID',
+    mpesaCode: bookingForm.mpesaCode || '',
+    paidAmount: bookingForm.paymentMethod === 'CREDIT' ? 0 : totalAmount,
+    remainingBalance: bookingForm.paymentMethod === 'CREDIT' ? totalAmount : 0,
+    notes: bookingForm.notes || '',
+    status: 'pending',
+    isGuestBooking: false,
+    userId: currentUser?.id || '',
+    userEmail: currentUser?.email || '',
+    vehicleRegistration: selectedVehicle.registration || '',
+    vehicleMake: selectedVehicle.make || '',
+    vehicleModel: selectedVehicle.model || '',
+    vehiclePricePerDay: selectedVehicle.pricePerDay || 0,
+    tenantId: tenantId,
+    // ✅ Terms fields
+    termsAccepted: true,
+    termsAcceptedAt: new Date().toISOString(),
+    termsVersion: "1.0",
+    customerSignature: signatureData
+  };
+
+  try {
+    console.log('📤 Creating booking:', newBooking);
+    const response = await bookingService.create(newBooking);
+
+    if (response?.success) {
+      showNotification(`✅ Booking confirmed! Reference: ${ref}`);
+      loadData(tenantId);
+      setShowBookingModal(false);
+      setSelectedVehicle(null);
+      setCalculatedTotal(0);
+      setDays(0);
+      setIdImagePreview(null);
+      setLicenseImagePreview(null);
+      
+      const userToKeep = loggedInUser || user || currentUser;
+      setBookingForm({
+        startDate: '',
+        endDate: '',
+        startTime: '08:00',
+        endTime: '18:00',
+        notes: '',
+        paymentMethod: 'CASH',
+        mpesaCode: '',
+        customerName: userToKeep?.name || '',
+        customerEmail: userToKeep?.email || '',
+        customerPhone: userToKeep?.phone || '',
+        customerIdNumber: '',
+        customerLicenseNumber: '',
+        customerIdImage: null,
+        customerLicenseImage: null
+      });
+    } else {
+      showNotification('Failed to create booking: ' + (response?.message || 'Unknown error'), 'error');
+    }
+  } catch (error) {
+    console.error('Error creating booking:', error);
+    showNotification('Failed to create booking. Please try again.', 'error');
+  }
+  
+  setIsSubmitting(false);
+}, [bookingForm, selectedVehicle, loggedInUser, user, currentUser, tenantId]);
+
+// Terms handlers
+const handleCarHireTermsAccept = (signatureData) => {
+  setShowTermsModal(false);
+  performCarHireBooking(signatureData);
+};
+
+const handleCarHireTermsDecline = () => {
+  setShowTermsModal(false);
+  showNotification('You must accept the terms and conditions to proceed.', 'error');
+};
 
   const cancelBooking = useCallback(async (bookingId) => {
     if (!window.confirm('Are you sure you want to cancel this booking?')) return;
@@ -1531,6 +1598,15 @@ const VehicleCard = ({ vehicle }) => {
 
       {/* Booking Modal */}
       {BookingModal}
+      {/* Terms and Conditions Modal */}
+      <TermsAndConditions
+        isOpen={showTermsModal}
+        onClose={() => setShowTermsModal(false)}
+        onAccept={handleCarHireTermsAccept}
+        onDecline={handleCarHireTermsDecline}
+        title="Hire Agreement Terms & Conditions"
+        serviceType="car_hire"
+      />
     </div>
   );
 };

@@ -11,6 +11,7 @@ import {
 
 // ✅ IMPORT ONLY guestBookingService (NO publicDataService)
 import { guestBookingService, publicDataService } from '../services/api';
+import TermsAndConditions from '../components/common/TermsAndConditions';
 
 // Helper to format date with time
 const formatDateTime = (dateString) => {
@@ -94,6 +95,8 @@ const GuestBooking = ({ onNavigate }) => {
   const [selectedItem, setSelectedItem] = useState(null);
   const [isPreview, setIsPreview] = useState(false);  // ✅ ADD THIS
   const [isSubmitting, setIsSubmitting] = useState(false);  // ✅ ADD THIS
+  // Terms and conditions state
+  const [showTermsModal, setShowTermsModal] = useState(false);
   
   // Image upload refs
   const idImageRef = useRef(null);
@@ -1055,18 +1058,205 @@ Please choose different dates or another vehicle.
     firstClassPrice: itemDetails.firstClassPrice || 0,
   };
 
-  try {
-    // ✅ SET SUBMITTING STATE
-    setIsSubmitting(true);
+    // ✅ If all validation passes, show terms modal
+  setShowTermsModal(true);
+};
+
+// Perform the actual booking after terms are accepted
+const performGuestBooking = async (signatureData = null) => {
+  setIsSubmitting(true);
+
+  const ref = `BOOK-${Date.now().toString().slice(-6)}-${Math.random().toString(36).substr(2, 4).toUpperCase()}`;
+  setBookingReference(ref);
+
+  const startDateTime = formData.startDate ? `${formData.startDate}T${formData.startTime || '08:00'}` : null;
+  const endDateTime = formData.endDate ? `${formData.endDate}T${formData.endTime || '18:00'}` : null;
+
+  let calculatedDays = 0;
+  if (formData.startDate && formData.endDate) {
+    const start = new Date(formData.startDate);
+    const end = new Date(formData.endDate);
+    const diffTime = Math.abs(end - start);
+    calculatedDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) || 1;
+  }
+  
+  const daysToUse = calculatedDays || formData.days || days || 1;
+
+  let total = 0;
+  let itemDetails = {};
+
+  if (selectedService === 'car_hire') {
+    const vehicle = vehicles.find(v => v.id === formData.itemId);
+    const owner = carOwners.find(o => o.id === vehicle?.ownerId);
+    const pricePerDay = vehicle?.pricePerDay || 0;
+    const totalWithDays = pricePerDay * daysToUse;
     
-    // ✅ CALL THE API
+    itemDetails = {
+      itemName: `${vehicle?.registration} - ${vehicle?.make} ${vehicle?.model}`,
+      itemPrice: vehicle?.pricePerDay || 0,
+      ownerId: vehicle?.ownerId || '',
+      ownerName: owner?.name || '',
+      vehicleRegistration: vehicle?.registration || '',
+      vehicleMake: vehicle?.make || '',
+      vehicleModel: vehicle?.model || '',
+      vehiclePricePerDay: vehicle?.pricePerDay || 0
+    };
+    
+    total = totalWithDays;
+    setCalculatedTotal(totalWithDays);
+    setFormData(prev => ({ ...prev, totalAmount: totalWithDays }));
+    
+  } else if (selectedService === 'tour') {
+    const tour = tours.find(t => t.id === formData.itemId);
+    const passengers = formData.passengers || 1;
+    itemDetails = {
+      itemName: tour?.name || tour?.title || 'Tour',
+      itemPrice: tour?.price || 0
+    };
+    total = (tour?.price || 0) * passengers;
+    
+  } else if (selectedService === 'hajj') {
+    const hajjPkg = hajjPackages.find(h => h.id === formData.itemId);
+    const passengers = formData.passengers || 1;
+    itemDetails = {
+      itemName: hajjPkg?.name || 'Hajj Package',
+      itemPrice: hajjPkg?.price || 0,
+      packageType: hajjPkg?.type || 'hajj',
+      accommodation: hajjPkg?.accommodation || '',
+      meals: hajjPkg?.meals || '',
+      transport: hajjPkg?.transport || '',
+      guides: hajjPkg?.guides || '',
+      visa: hajjPkg?.visa || '',
+      insurance: hajjPkg?.insurance || ''
+    };
+    total = (hajjPkg?.price || 0) * passengers;
+    
+  } else if (selectedService === 'hotel') {
+    const room = roomTypes.find(r => r.id === formData.itemId);
+    const hotel = hotels.find(h => h.id === room?.hotelId);
+    const nights = calculateNights(formData.checkIn, formData.checkOut) || 1;
+    const rooms = formData.rooms || 1;
+    
+    itemDetails = {
+      itemName: room?.name || 'Hotel Room',
+      itemPrice: room?.price || 0,
+      hotelId: room?.hotelId || '',
+      hotelName: hotel?.name || '',
+      hotelCity: hotel?.city || '',
+      hotelStarRating: hotel?.starRating || 0,
+      roomType: room?.type || 'standard',
+      roomName: room?.name || '',
+      nights: nights,
+      rooms: rooms,
+      checkIn: formData.checkIn,
+      checkOut: formData.checkOut,
+      guests: formData.guests || 1
+    };
+    total = (room?.price || 0) * nights * rooms;
+    
+  } else if (selectedService === 'flight') {
+    const flight = flights.find(f => f.id === formData.itemId);
+    const passengers = formData.passengers || 1;
+    const seatClass = formData.seatClass || 'economy';
+    const pricePerPerson = getFlightPrice(flight, seatClass);
+    
+    itemDetails = {
+      itemName: `${flight?.airline} - ${flight?.flightNumber}`,
+      itemPrice: pricePerPerson,
+      airline: flight?.airline || '',
+      flightNumber: flight?.flightNumber || '',
+      origin: flight?.origin || '',
+      destination: flight?.destination || '',
+      departureDate: flight?.departureDate || '',
+      departureTime: flight?.departureTime || '',
+      arrivalDate: flight?.arrivalDate || '',
+      arrivalTime: flight?.arrivalTime || '',
+      duration: flight?.duration || '',
+      seatClass: seatClass,
+      economyPrice: flight?.economyPrice || flight?.price || 0,
+      businessPrice: flight?.businessPrice || flight?.price * 1.5 || 0,
+      firstClassPrice: flight?.firstClassPrice || flight?.price * 2 || 0
+    };
+    total = pricePerPerson * passengers;
+  }
+
+  const bookingData = {
+    customerName: formData.customerName,
+    customerEmail: formData.customerEmail,
+    customerPhone: formData.customerPhone,
+    customerIdNumber: formData.customerIdNumber || '',
+    customerLicenseNumber: formData.customerLicenseNumber || '',
+    customerIdImage: formData.customerIdImage || null,
+    customerLicenseImage: formData.customerLicenseImage || null,
+    serviceType: selectedService,
+    itemName: itemDetails.itemName,
+    itemPrice: itemDetails.itemPrice,
+    vehicleId: selectedService === 'car_hire' ? formData.itemId : null,
+    tourPackageId: selectedService === 'tour' ? formData.itemId : null,
+    hajjPackageId: selectedService === 'hajj' ? formData.itemId : null,
+    hotelId: selectedService === 'hotel' ? formData.hotelId : null,
+    roomTypeId: selectedService === 'hotel' ? formData.itemId : null,
+    flightId: selectedService === 'flight' ? formData.itemId : null,
+    ownerId: selectedService === 'car_hire' ? itemDetails.ownerId : null,
+    startDate: startDateTime,
+    endDate: endDateTime,
+    startTime: formData.startTime || '08:00',
+    endTime: formData.endTime || '18:00',
+    days: daysToUse,
+    passengers: formData.passengers || 1,
+    totalPrice: total,
+    paidAmount: formData.paymentMethod === 'CREDIT' ? 0 : total,
+    remainingBalance: formData.paymentMethod === 'CREDIT' ? total : 0,
+    paymentMethod: formData.paymentMethod,
+    paymentStatus: formData.paymentMethod === 'CREDIT' ? 'PENDING' : 'PAID',
+    mpesaCode: formData.mpesaCode || '',
+    vehicleConditionImages: JSON.stringify(formData.vehicleConditionImages || []),
+    notes: formData.notes || '',
+    status: 'pending',
+    isGuestBooking: true,
+    packageType: itemDetails.packageType || formData.packageType || 'hajj',
+    accommodation: itemDetails.accommodation || formData.accommodation || '',
+    meals: itemDetails.meals || formData.meals || '',
+    transport: itemDetails.transport || formData.transport || '',
+    guides: itemDetails.guides || formData.guides || '',
+    insurance: itemDetails.insurance || formData.insurance || '',
+    hotelName: itemDetails.hotelName || '',
+    hotelCity: itemDetails.hotelCity || '',
+    hotelStarRating: itemDetails.hotelStarRating || 0,
+    roomName: itemDetails.roomName || '',
+    roomType: itemDetails.roomType || '',
+    checkIn: itemDetails.checkIn || '',
+    checkOut: itemDetails.checkOut || '',
+    nights: itemDetails.nights || 0,
+    rooms: itemDetails.rooms || 1,
+    guests: itemDetails.guests || 1,
+    airline: itemDetails.airline || '',
+    flightNumber: itemDetails.flightNumber || '',
+    origin: itemDetails.origin || '',
+    destination: itemDetails.destination || '',
+    departureDateFlight: itemDetails.departureDate || '',
+    departureTimeFlight: itemDetails.departureTime || '',
+    arrivalDateFlight: itemDetails.arrivalDate || '',
+    arrivalTimeFlight: itemDetails.arrivalTime || '',
+    durationFlight: itemDetails.duration || '',
+    seatClass: itemDetails.seatClass || 'economy',
+    economyPrice: itemDetails.economyPrice || 0,
+    businessPrice: itemDetails.businessPrice || 0,
+    firstClassPrice: itemDetails.firstClassPrice || 0,
+    // ✅ Terms fields
+    termsAccepted: true,
+    termsAcceptedAt: new Date().toISOString(),
+    termsVersion: "1.0",
+    customerSignature: signatureData
+  };
+
+  try {
     const response = await guestBookingService.create(bookingData);
     
     if (response.success) {
       const createdBooking = response.data;
       setBookingReference(createdBooking.reference || ref);
       
-      // ✅ Also save to localStorage as backup
       const guestBookings = JSON.parse(localStorage.getItem('travel_agency_guest_bookings') || '[]');
       guestBookings.push({ ...bookingData, reference: createdBooking.reference, id: createdBooking.id });
       localStorage.setItem('travel_agency_guest_bookings', JSON.stringify(guestBookings));
@@ -1085,9 +1275,19 @@ Please choose different dates or another vehicle.
     console.error('❌ Booking submission failed:', error);
     showNotification(`❌ Failed to create booking: ${error.message}`, 'error');
   } finally {
-    // ✅ RESET SUBMITTING STATE
     setIsSubmitting(false);
   }
+};
+
+// Terms handlers
+const handleGuestTermsAccept = (signatureData) => {
+  setShowTermsModal(false);
+  performGuestBooking(signatureData);
+};
+
+const handleGuestTermsDecline = () => {
+  setShowTermsModal(false);
+  showNotification('You must accept the terms and conditions to proceed.', 'error');
 };
 
   const resetBooking = () => {
@@ -2226,6 +2426,16 @@ Please choose different dates or another vehicle.
           {step === 2 && renderStep2()}
           {step === 3 && bookingComplete && renderStep3()}
         </div>
+
+              {/* Terms and Conditions Modal */}
+      <TermsAndConditions
+        isOpen={showTermsModal}
+        onClose={() => setShowTermsModal(false)}
+        onAccept={handleGuestTermsAccept}
+        onDecline={handleGuestTermsDecline}
+        title="Hire Agreement Terms & Conditions"
+        serviceType="car_hire"
+      />
 
         {/* Footer */}
         <div className="text-center pb-3">

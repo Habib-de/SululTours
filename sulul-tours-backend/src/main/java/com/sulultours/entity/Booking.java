@@ -273,6 +273,19 @@ public class Booking {
     @Column(name = "notes", columnDefinition = "TEXT")
     private String notes;
 
+    // Terms and Conditions fields
+    @Column(name = "terms_accepted")
+    private Boolean termsAccepted = false;
+
+    @Column(name = "terms_accepted_at")
+    private LocalDateTime termsAcceptedAt;
+
+    @Column(name = "terms_version", length = 50)
+    private String termsVersion = "1.0";
+
+    @Column(name = "customer_signature", columnDefinition = "TEXT")
+    private String customerSignature;
+
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 

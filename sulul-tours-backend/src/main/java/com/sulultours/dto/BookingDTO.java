@@ -107,6 +107,11 @@ public class BookingDTO {
 
     private String status;
     private String notes;
+    // Terms and Conditions
+    private Boolean termsAccepted = false;
+    private LocalDateTime termsAcceptedAt;
+    private String termsVersion = "1.0";
+    private String customerSignature;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

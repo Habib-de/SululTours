@@ -37,9 +37,11 @@ import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.time.ZoneId;
 
 @RestController
 @RequestMapping("/bookings")
@@ -478,6 +480,12 @@ booking.setGuests(dto.getGuests());
         
         // Notes
         booking.setNotes(dto.getNotes());
+
+        // Terms and Conditions
+      booking.setTermsAccepted(dto.getTermsAccepted() != null ? dto.getTermsAccepted() : false);
+      booking.setTermsAcceptedAt(dto.getTermsAcceptedAt() != null ? dto.getTermsAcceptedAt() : LocalDateTime.now(ZoneId.of("Africa/Nairobi")));
+      booking.setTermsVersion(dto.getTermsVersion() != null ? dto.getTermsVersion() : "1.0");
+      booking.setCustomerSignature(dto.getCustomerSignature());
         
         // Set timestamps
         if (dto.getCreatedAt() != null) {
@@ -629,6 +637,11 @@ if (booking.getRoomType() != null) {
         
         dto.setStatus(booking.getStatus());
         dto.setNotes(booking.getNotes());
+        // Terms and Conditions
+        dto.setTermsAccepted(booking.getTermsAccepted());
+        dto.setTermsAcceptedAt(booking.getTermsAcceptedAt());
+        dto.setTermsVersion(booking.getTermsVersion());
+        dto.setCustomerSignature(booking.getCustomerSignature());
         dto.setCreatedAt(booking.getCreatedAt());
         dto.setUpdatedAt(booking.getUpdatedAt());
         
