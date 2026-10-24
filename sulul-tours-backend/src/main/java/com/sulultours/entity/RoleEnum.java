@@ -4,5 +4,6 @@ public enum RoleEnum {
     super_admin,
     fleet_manager,
     car_owner,
+    broker, 
     client
 }

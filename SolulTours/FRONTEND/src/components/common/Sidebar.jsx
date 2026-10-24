@@ -71,6 +71,7 @@ const Sidebar = ({ sidebarOpen, setSidebarOpen, activeTab, setActiveTab, navItem
       case 'super_admin': return 'Super Admin';
       case 'fleet_manager': return 'Fleet Manager';
       case 'car_owner': return 'Car Owner';
+      case 'broker': return 'Broker';
       case 'client': return 'Client';
       default: return 'User';
     }
@@ -104,7 +105,7 @@ const Sidebar = ({ sidebarOpen, setSidebarOpen, activeTab, setActiveTab, navItem
         groups.main.items.push(item);
       }
       // Car Hire
-      else if (id === 'vehicles' || id === 'car-owners' || id === 'maintenance' || 
+      else if (id === 'vehicles' || id === 'car-owners' || id === 'brokers' || id === 'maintenance' || 
                id === 'car-bookings' || id === 'client-car-hire' || id === 'my-vehicles' ||
                id === 'vehicle-bookings' || id === 'revenue' || id === 'issues' || 
                id === 'maintenance-status' || id === 'car-crm') {

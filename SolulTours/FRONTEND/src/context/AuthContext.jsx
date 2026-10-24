@@ -5,6 +5,7 @@ export const roles = {
   SUPER_ADMIN: 'super_admin',
   FLEET_MANAGER: 'fleet_manager',    // Manages all fleet operations
   CAR_OWNER: 'car_owner',             // Owns vehicles, sees bookings & revenue
+  BROKER: 'broker',                   // Sales agent — books on behalf of clients
   CLIENT: 'client'                    // Books services (self-drive)
 };
 

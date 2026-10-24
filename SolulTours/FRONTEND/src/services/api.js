@@ -374,6 +374,45 @@ export const carOwnerService = {
 };
 
 // ============================================
+// BROKER (SALES AGENT) SERVICES — managed by FM
+// ============================================
+
+export const brokerService = {
+  getAll: async (tenantId) => {
+    const response = await apiCall(`/users/tenant/${tenantId}`, 'GET');
+    if (response?.success && response?.data) {
+      return { ...response, data: response.data.filter(u => u.role === 'broker') };
+    }
+    return response;
+  },
+
+  create: async (brokerData) => {
+    const response = await apiCall('/users', 'POST', { ...brokerData, role: 'broker' });
+    return response;
+  },
+
+  update: async (id, brokerData) => {
+    const response = await apiCall(`/users/${id}`, 'PUT', brokerData);
+    return response;
+  },
+
+  updateStatus: async (id, status) => {
+    const response = await apiCall(`/users/${id}`, 'PUT', { status });
+    return response;
+  },
+
+  delete: async (id) => {
+    const response = await apiCall(`/users/${id}`, 'DELETE');
+    return response;
+  },
+
+  resetPassword: async (id, newPassword) => {
+    const response = await apiCall(`/users/${id}/change-password?newPassword=${newPassword}`, 'PUT');
+    return response;
+  },
+};
+
+// ============================================
 // BOOKING SERVICES
 // ============================================
 
@@ -432,6 +471,25 @@ export const bookingService = {
     const response = await apiCall(`/bookings/${id}`, 'DELETE');
     return response;
   },
+
+  // ============================================
+  // ✅ BROKER ENDPOINTS
+  // ============================================
+  getBrokerMyBookings: async () => {
+    const response = await apiCall('/bookings/broker/my-bookings', 'GET');
+    return response;
+  },
+
+  getBrokerTodayBookings: async () => {
+    const response = await apiCall('/bookings/broker/today', 'GET');
+    return response;
+  },
+
+  getBrokerTodayStats: async () => {
+    const response = await apiCall('/bookings/broker/today/stats', 'GET');
+    return response;
+  },
+
 };
 
 // ============================================
@@ -1197,6 +1255,7 @@ export default {
   user: userService,
   vehicle: vehicleService,
   carOwner: carOwnerService,
+  broker: brokerService,
   booking: bookingService,
   tourPackage: tourPackageService,
   tourGuide: tourGuideService,

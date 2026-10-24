@@ -11,6 +11,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @RestController
@@ -26,6 +27,29 @@ public class UserController {
         List<User> users = userService.getAllUsers();
         List<UserDTO> dtos = users.stream().map(this::convertToDTO).collect(Collectors.toList());
         return ResponseEntity.ok(ApiResponse.success(dtos));
+    }
+
+     // ==========================================
+    // ✅ CREATE USER (Fleet Manager creates brokers, etc.)
+    // ==========================================
+    @PostMapping
+    @PreAuthorize("hasAnyRole('super_admin', 'fleet_manager')")
+    public ResponseEntity<ApiResponse<UserDTO>> createUser(@RequestBody Map<String, String> request) {
+        try {
+            String email = request.get("email");
+            String name = request.get("name");
+            String phone = request.get("phone");
+            String password = request.get("password");
+            String role = request.get("role");
+            String tenantId = request.get("tenantId");
+
+            UserDTO created = userService.createUser(email, name, phone, password, role, tenantId);
+            return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success("User created successfully", created));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.error("Failed to create user: " + e.getMessage()));
+        }
     }
 
     @GetMapping("/{id}")

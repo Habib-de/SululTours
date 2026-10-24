@@ -34,6 +34,7 @@ import CarOwners from './pages/fleet-manager/CarOwners';
 import Maintenance from './pages/fleet-manager/Maintenance';
 import CarBookings from './pages/fleet-manager/CarBookings';
 import CarBookingCRM from './pages/fleet-manager/CarBookingCRM';
+import Brokers from './pages/fleet-manager/Brokers';
 
 // Tours Management
 import TourPackages from './pages/fleet-manager/TourPackages';
@@ -89,6 +90,12 @@ import ClientMyBookings from './pages/client/MyBookings';
 import ClientProfile from './pages/client/ClientProfile';
 
 // ============================================
+// BROKER PAGES
+// ============================================
+import BrokerDashboard from './pages/broker/BrokerDashboard';
+import BrokerCarBookings from './pages/broker/BrokerCarBookings'; 
+
+// ============================================
 // NOTIFICATIONS PAGE (ALL ROLES)
 // ============================================
 import NotificationsPage from './pages/NotificationsPage';
@@ -137,6 +144,7 @@ const getNavItems = (role) => {
       // Car Hire
       { id: 'vehicles', label: 'Vehicles', icon: Car },
       { id: 'car-owners', label: 'Car Owners', icon: User },
+      { id: 'brokers', label: 'Brokers', icon: Users },
       { id: 'maintenance', label: 'Maintenance', icon: Wrench },
       { id: 'car-bookings', label: 'Car Bookings', icon: Calendar },
       { id: 'car-crm', label: 'Customer CRM', icon: Users },
@@ -183,6 +191,18 @@ const getNavItems = (role) => {
       { id: 'compliance', label: 'Compliance', icon: ClipboardCheck },
       // { id: 'reports', label: 'Reports', icon: FileText },
     ],
+
+    // ========== BROKER (Sales Agent) ==========
+       [roles.BROKER]: [
+      ...commonItems,
+      { id: 'car-bookings', label: 'Car Hire Bookings', icon: Car },
+      // ⏳ Hidden until broker-specific pages are built:
+      // { id: 'tour-bookings', label: 'Tour Bookings', icon: Compass },
+      // { id: 'hajj-bookings', label: 'Hajj/Umra Bookings', icon: Map },
+      // { id: 'hotel-bookings', label: 'Hotel Bookings', icon: Building },
+      // { id: 'flight-bookings', label: 'Flight Bookings', icon: Plane },
+    ],
+
 
     // ========== CLIENT ==========
     [roles.CLIENT]: [
@@ -237,6 +257,7 @@ const PageRenderer = ({ tab, role, setActiveTab }) => {
       // Car Hire
       vehicles: <Vehicles setActiveTab={setActiveTab} />,
       'car-owners': <CarOwners setActiveTab={setActiveTab} />,
+       brokers: <Brokers setActiveTab={setActiveTab} />,
       maintenance: <Maintenance setActiveTab={setActiveTab} />,
       'car-bookings': <CarBookings setActiveTab={setActiveTab} />,
       'car-crm': <CarBookingCRM setActiveTab={setActiveTab} />,
@@ -289,6 +310,21 @@ const PageRenderer = ({ tab, role, setActiveTab }) => {
       // reports: <Reports setActiveTab={setActiveTab} />,
     };
     return ownerPages[tab] || <CarOwnerDashboard setActiveTab={setActiveTab} />;
+  }
+
+  // ========== BROKER PAGES ==========
+    if (role === roles.BROKER) {
+    const brokerPages = {
+      dashboard: <BrokerDashboard setActiveTab={setActiveTab} />,
+      'car-bookings': <BrokerCarBookings setActiveTab={setActiveTab} />,   // ✅ broker-specific
+      // ⏳ Other service booking pages — hidden for now
+      // 'tour-bookings': <BrokerTourBookings setActiveTab={setActiveTab} />,
+      // 'hajj-bookings': <BrokerHajjBookings setActiveTab={setActiveTab} />,
+      // 'hotel-bookings': <BrokerHotelBookings setActiveTab={setActiveTab} />,
+      // 'flight-bookings': <BrokerFlightBookings setActiveTab={setActiveTab} />,
+      notifications: <NotificationsPage setActiveTab={setActiveTab} />,
+    };
+    return brokerPages[tab] || <BrokerDashboard setActiveTab={setActiveTab} />;
   }
 
   // ========== CLIENT PAGES ==========

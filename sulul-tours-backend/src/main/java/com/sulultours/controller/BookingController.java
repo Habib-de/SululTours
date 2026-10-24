@@ -19,6 +19,8 @@ import com.sulultours.repository.TourPackageRepository;
 import com.sulultours.repository.UserRepository;
 import com.sulultours.repository.VehicleRepository;
 import com.sulultours.service.BookingService;
+import com.sulultours.service.UserService;
+import java.util.Map;
 import com.sulultours.entity.TourPackage;         
 import com.sulultours.repository.TourPackageRepository;
 import com.sulultours.entity.HajjPackage;
@@ -50,6 +52,7 @@ import java.time.ZoneId;
 public class BookingController {
 
     private final BookingService bookingService;
+    private final UserService userService;
     private final TenantRepository tenantRepository;
     private final UserRepository userRepository;
     private final VehicleRepository vehicleRepository;
@@ -61,9 +64,22 @@ public class BookingController {
     private final RoomTypeRepository roomTypeRepository;  
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('super_admin', 'fleet_manager', 'client')")
+    @PreAuthorize("hasAnyRole('super_admin', 'fleet_manager', 'client', 'broker')")
 public ResponseEntity<ApiResponse<BookingDTO>> createBooking(@RequestBody BookingDTO bookingDTO) {
     try {
+        // ✅ BROKER ATTRIBUTION: Force user_id to broker if the caller is a broker
+        try {
+            User currentBroker = userService.getCurrentUser();
+            if (currentBroker != null && currentBroker.getRole() == com.sulultours.entity.RoleEnum.broker) {
+                bookingDTO.setUserId(currentBroker.getId());
+                bookingDTO.setUserEmail(currentBroker.getEmail());
+                bookingDTO.setIsGuestBooking(false);
+                bookingDTO.setStatus("pending");
+                System.out.println("🔒 Broker booking forced attribution to: " + currentBroker.getEmail());
+            }
+        } catch (Exception e) {
+            System.out.println("⚠️ Could not resolve current user for broker attribution: " + e.getMessage());
+        }
         // ✅ Add these debug logs
         System.out.println("========================================");
         System.out.println("📥 Received BookingDTO:");
@@ -139,8 +155,62 @@ public ResponseEntity<ApiResponse<List<BookingDTO>>> getAllBookings() {
     return ResponseEntity.ok(ApiResponse.success(dtos));
 }
 
+ // ==========================================
+    // ✅ BROKER ENDPOINTS
+    // ==========================================
+
+    /**
+     * Get all bookings created by the logged-in broker (their full history)
+     */
+    @GetMapping("/broker/my-bookings")
+    @PreAuthorize("hasRole('broker')")
+    public ResponseEntity<ApiResponse<List<BookingDTO>>> getMyBrokerBookings() {
+        try {
+            User currentUser = userService.getCurrentUser();
+            List<Booking> bookings = bookingService.getBrokerBookings(currentUser.getId());
+            List<BookingDTO> dtos = bookings.stream().map(this::convertToDTO).collect(Collectors.toList());
+            return ResponseEntity.ok(ApiResponse.success(dtos));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiResponse.error("Failed to fetch broker bookings: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Get today's bookings created by the logged-in broker
+     */
+    @GetMapping("/broker/today")
+    @PreAuthorize("hasRole('broker')")
+    public ResponseEntity<ApiResponse<List<BookingDTO>>> getMyBrokerTodayBookings() {
+        try {
+            User currentUser = userService.getCurrentUser();
+            List<Booking> bookings = bookingService.getBrokerTodayBookings(currentUser.getId());
+            List<BookingDTO> dtos = bookings.stream().map(this::convertToDTO).collect(Collectors.toList());
+            return ResponseEntity.ok(ApiResponse.success(dtos));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiResponse.error("Failed to fetch today's bookings: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Get today's sales/booking stats for the logged-in broker
+     */
+    @GetMapping("/broker/today/stats")
+    @PreAuthorize("hasRole('broker')")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getMyBrokerTodayStats() {
+        try {
+            User currentUser = userService.getCurrentUser();
+            Map<String, Object> stats = bookingService.getBrokerTodayStats(currentUser.getId());
+            return ResponseEntity.ok(ApiResponse.success(stats));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiResponse.error("Failed to fetch broker stats: " + e.getMessage()));
+        }
+    }
+
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('super_admin', 'fleet_manager', 'client')")
+    @PreAuthorize("hasAnyRole('super_admin', 'fleet_manager', 'client', 'broker')")
     public ResponseEntity<ApiResponse<BookingDTO>> getBookingById(@PathVariable String id) {
         Booking booking = bookingService.getBookingById(id);
         return ResponseEntity.ok(ApiResponse.success(convertToDTO(booking)));
@@ -185,7 +255,7 @@ public ResponseEntity<ApiResponse<List<BookingDTO>>> getAllBookings() {
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('super_admin', 'fleet_manager', 'client')")
+    @PreAuthorize("hasAnyRole('super_admin', 'fleet_manager', 'client', 'broker')")
     public ResponseEntity<ApiResponse<BookingDTO>> updateBooking(@PathVariable String id, @RequestBody BookingDTO bookingDTO) {
         Booking booking = convertToEntity(bookingDTO);
         Booking updated = bookingService.updateBooking(id, booking);
@@ -193,7 +263,7 @@ public ResponseEntity<ApiResponse<List<BookingDTO>>> getAllBookings() {
     }
 
     @PatchMapping("/{id}/status")
-    @PreAuthorize("hasAnyRole('super_admin', 'fleet_manager', 'client')")
+    @PreAuthorize("hasAnyRole('super_admin', 'fleet_manager', 'client', 'broker')")
     public ResponseEntity<ApiResponse<BookingDTO>> updateBookingStatus(
             @PathVariable String id,
             @RequestParam String status) {

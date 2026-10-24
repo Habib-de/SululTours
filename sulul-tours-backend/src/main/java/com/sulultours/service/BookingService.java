@@ -17,8 +17,8 @@ import java.util.UUID;
 
 import com.sulultours.entity.User;
 import com.sulultours.entity.Notification;
-// import java.util.HashMap;
-// import java.util.Map;
+import java.util.HashMap;
+import java.util.Map;
 import com.sulultours.entity.RoleEnum;
 
 @Service
@@ -202,6 +202,74 @@ public Booking createBooking(Booking booking) {
     public List<Booking> getAllBookings() {
         return bookingRepository.findAll();
     }
+
+    // ==========================================
+    // ✅ BROKER METHODS
+    // ==========================================
+
+    /**
+     * Get ALL bookings created by a specific broker (their own history)
+     */
+    public List<Booking> getBrokerBookings(String brokerUserId) {
+        if (brokerUserId == null) return new ArrayList<>();
+        return bookingRepository.findByUserIdOrderByCreatedAtDesc(brokerUserId);
+    }
+
+    /**
+     * Get today's bookings created by a specific broker
+     */
+    public List<Booking> getBrokerTodayBookings(String brokerUserId) {
+        if (brokerUserId == null) return new ArrayList<>();
+        LocalDateTime startOfDay = java.time.LocalDate.now().atStartOfDay();
+        LocalDateTime endOfDay = startOfDay.plusDays(1);
+        return bookingRepository.findBrokerBookingsToday(brokerUserId, startOfDay, endOfDay);
+    }
+
+    /**
+     * Get today's stats for a broker — ONLY their own data
+     */
+    public Map<String, Object> getBrokerTodayStats(String brokerUserId) {
+        List<Booking> todays = getBrokerTodayBookings(brokerUserId);
+
+        BigDecimal totalSales = todays.stream()
+            .map(Booking::getTotalPrice)
+            .filter(java.util.Objects::nonNull)
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal totalCollected = todays.stream()
+            .map(Booking::getPaidAmount)
+            .filter(java.util.Objects::nonNull)
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal totalDebt = todays.stream()
+            .map(Booking::getRemainingBalance)
+            .filter(java.util.Objects::nonNull)
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        Map<String, Object> stats = new HashMap<>();
+        stats.put("totalBookings", todays.size());
+        stats.put("totalSales", totalSales);
+        stats.put("totalCollected", totalCollected);
+        stats.put("totalDebt", totalDebt);
+        stats.put("pendingCount", todays.stream().filter(b -> "pending".equals(b.getStatus())).count());
+        stats.put("confirmedCount", todays.stream().filter(b -> "confirmed".equals(b.getStatus())).count());
+        stats.put("completedCount", todays.stream().filter(b -> "completed".equals(b.getStatus())).count());
+        stats.put("cancelledCount", todays.stream().filter(b -> "cancelled".equals(b.getStatus())).count());
+
+        Map<String, Long> byService = new HashMap<>();
+        Map<String, BigDecimal> revenueByService = new HashMap<>();
+        for (Booking b : todays) {
+            String st = b.getServiceType() != null ? b.getServiceType() : "unknown";
+            byService.merge(st, 1L, Long::sum);
+            BigDecimal price = b.getTotalPrice() != null ? b.getTotalPrice() : BigDecimal.ZERO;
+            revenueByService.merge(st, price, BigDecimal::add);
+        }
+        stats.put("byService", byService);
+        stats.put("revenueByService", revenueByService);
+
+        return stats;
+    }
+
 
     @Transactional
     public Booking updateBooking(String id, Booking bookingDetails) {

@@ -63,6 +63,10 @@ const CarBookings = ({ setActiveTab }) => {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
+  const [filterStartDate, setFilterStartDate] = useState('');
+  const [filterEndDate, setFilterEndDate] = useState('');
+  const [filterStartDateFocused, setFilterStartDateFocused] = useState(false); 
+  const [filterEndDateFocused, setFilterEndDateFocused] = useState(false); 
   const [selectedBooking, setSelectedBooking] = useState(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [showStatusModal, setShowStatusModal] = useState(false);
@@ -1641,7 +1645,7 @@ const handleTermsDecline = () => {
 
   const statusOptions = ['all', 'pending', 'confirmed', 'completed', 'cancelled'];
 
-  const filteredBookings = bookings.filter(b => {
+    const filteredBookings = bookings.filter(b => {
     const vehicle = getVehicleDetails(b.vehicleId);
     const owner = getOwnerDetails(b.ownerId);
     const searchLower = searchQuery.toLowerCase();
@@ -1657,7 +1661,24 @@ const handleTermsDecline = () => {
       owner?.name?.toLowerCase().includes(searchLower);
     
     const matchesFilter = filterStatus === 'all' || b.status === filterStatus;
-    return matchesSearch && matchesFilter;
+
+    // ✅ DATE RANGE FILTER — matches bookings whose startDate falls within range
+    let matchesDateRange = true;
+    if (filterStartDate || filterEndDate) {
+      const bStart = new Date(b.startDate);
+      if (filterStartDate) {
+        const filterStart = new Date(filterStartDate);
+        filterStart.setHours(0, 0, 0, 0);
+        if (bStart < filterStart) matchesDateRange = false;
+      }
+      if (filterEndDate) {
+        const filterEnd = new Date(filterEndDate);
+        filterEnd.setHours(23, 59, 59, 999);
+        if (bStart > filterEnd) matchesDateRange = false;
+      }
+    }
+
+    return matchesSearch && matchesFilter && matchesDateRange;
   });
 
   // Pagination calculations
@@ -3266,72 +3287,126 @@ const handleTermsDecline = () => {
       </div>
 
       {/* STATS SUMMARY */}
-      {bookings.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-7 gap-3 mb-6">
-          <div className="bg-white border border-gray-100 rounded-lg p-3">
-            <p className="text-xs text-gray-400">Total</p>
-            <p className="text-xl font-bold text-gray-800">{totalBookings}</p>
-          </div>
-          <div className="bg-white border border-gray-100 rounded-lg p-3">
-            <p className="text-xs text-gray-400">⏳ Pending</p>
-            <p className="text-xl font-bold text-yellow-600">{pendingBookings}</p>
-          </div>
-          <div className="bg-white border border-gray-100 rounded-lg p-3">
-            <p className="text-xs text-gray-400">📌 Confirmed</p>
-            <p className="text-xl font-bold text-blue-600">{confirmedBookings}</p>
-          </div>
-          <div className="bg-white border border-gray-100 rounded-lg p-3">
-            <p className="text-xs text-gray-400">✅ Completed</p>
-            <p className="text-xl font-bold text-green-600">{completedBookings}</p>
-          </div>
-          <div className="bg-white border border-gray-100 rounded-lg p-3">
-            <p className="text-xs text-gray-400">💰 Revenue</p>
-            <p className="text-xl font-bold text-purple-600">KSh {(totalRevenue || 0).toLocaleString()}</p>
-          </div>
-          <div className="bg-white border border-gray-100 rounded-lg p-3">
-            <p className="text-xs text-gray-400">💼 Commission</p>
-            <p className="text-xl font-bold text-orange-600">KSh {(totalCommission || 0).toLocaleString()}</p>
-          </div>
-          <div className="bg-white border border-gray-100 rounded-lg p-3">
-            <p className="text-xs text-gray-400">💳 Credit O/S</p>
-            <p className="text-xl font-bold text-red-600">KSh {(totalCreditOutstanding || 0).toLocaleString()}</p>
-          </div>
-        </div>
-      )}
+{bookings.length > 0 && (
+  <div className="flex flex-wrap gap-2 sm:gap-3 mb-6">
+    <div className="bg-white border border-gray-100 rounded-lg p-3 flex-grow basis-[calc(25%-0.5rem)] sm:basis-[calc(14.28%-0.75rem)]">
+      <p className="text-xs text-gray-400">Total</p>
+      <p className="text-xl font-bold text-gray-800">{totalBookings}</p>
+    </div>
+    <div className="bg-white border border-gray-100 rounded-lg p-3 flex-grow basis-[calc(25%-0.5rem)] sm:basis-[calc(14.28%-0.75rem)]">
+      <p className="text-xs text-gray-400">⏳ Pending</p>
+      <p className="text-xl font-bold text-yellow-600">{pendingBookings}</p>
+    </div>
+    <div className="bg-white border border-gray-100 rounded-lg p-3 flex-grow basis-[calc(25%-0.5rem)] sm:basis-[calc(14.28%-0.75rem)]">
+      <p className="text-xs text-gray-400">📌 Confirmed</p>
+      <p className="text-xl font-bold text-blue-600">{confirmedBookings}</p>
+    </div>
+    <div className="bg-white border border-gray-100 rounded-lg p-3 flex-grow basis-[calc(25%-0.5rem)] sm:basis-[calc(14.28%-0.75rem)]">
+      <p className="text-xs text-gray-400">✅ Completed</p>
+      <p className="text-xl font-bold text-green-600">{completedBookings}</p>
+    </div>
+    <div className="bg-white border border-gray-100 rounded-lg p-3 flex-grow basis-[calc(25%-0.5rem)] sm:basis-[calc(14.28%-0.75rem)]">
+      <p className="text-xs text-gray-400">💰 Revenue</p>
+      <p className="text-xl font-bold text-purple-600">KSh {(totalRevenue || 0).toLocaleString()}</p>
+    </div>
+    <div className="bg-white border border-gray-100 rounded-lg p-3 flex-grow basis-[calc(25%-0.5rem)] sm:basis-[calc(14.28%-0.75rem)]">
+      <p className="text-xs text-gray-400">💼 Commission</p>
+      <p className="text-xl font-bold text-orange-600">KSh {(totalCommission || 0).toLocaleString()}</p>
+    </div>
+    <div className="bg-white border border-gray-100 rounded-lg p-3 flex-grow basis-[calc(25%-0.5rem)] sm:basis-[calc(14.28%-0.75rem)]">
+      <p className="text-xs text-gray-400">💳 Credit O/S</p>
+      <p className="text-xl font-bold text-red-600">KSh {(totalCreditOutstanding || 0).toLocaleString()}</p>
+    </div>
+  </div>
+)}
 
-      {/* SEARCH & FILTER */}
-      <div className="flex flex-col sm:flex-row gap-3 mb-6">
-        <div className="flex-1 relative">
-          <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Search by customer, vehicle, owner..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-          />
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-            >
-              <X size={16} />
-            </button>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <Filter size={16} className="text-gray-400" />
-          <select
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
-          >
-            {statusOptions.map(s => (
-              <option key={s} value={s}>{s === 'all' ? 'All Status' : s.charAt(0).toUpperCase() + s.slice(1)}</option>
-            ))}
-          </select>
-        </div>
-      </div>
+            {/* SEARCH & FILTER */}
+<div className="bg-white rounded-lg shadow-sm p-3 mb-6">
+  <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
+    {/* Search - 1 column on mobile */}
+    <div className="relative col-span-1">
+      <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+      <input
+        type="text"
+        placeholder="Search customer, vehicle..."
+        value={searchQuery}
+        onChange={(e) => setSearchQuery(e.target.value)}
+        className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+      />
+      {searchQuery && (
+        <button
+          onClick={() => setSearchQuery('')}
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+        >
+          <X size={16} />
+        </button>
+      )}
+    </div>
+
+    {/* Status - 1 column on mobile */}
+    <select
+      value={filterStatus}
+      onChange={(e) => setFilterStatus(e.target.value)}
+      className="col-span-1 border border-gray-200 rounded-lg px-2 sm:px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+    >
+      {statusOptions.map(s => (
+        <option key={s} value={s}>
+          {s === 'all' ? 'All Status' : s.charAt(0).toUpperCase() + s.slice(1)}
+        </option>
+      ))}
+    </select>
+
+    {/* From Date - 1 column, same row as To Date on mobile */}
+    <div className="col-span-1">
+      <input
+        type={filterStartDateFocused ? 'date' : 'text'}
+        placeholder="From: dd/mm/yyyy"
+        value={filterStartDate}
+        onChange={(e) => setFilterStartDate(e.target.value)}
+        onFocus={(e) => {
+          setFilterStartDateFocused(true);
+          e.target.type = 'date';
+          e.target.showPicker?.();
+        }}
+        onBlur={() => setFilterStartDateFocused(false)}
+        className="w-full border border-gray-200 rounded-lg px-2 sm:px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+      />
+    </div>
+
+    {/* To Date - 1 column, same row as From Date on mobile */}
+    <div className="col-span-1">
+      <input
+        type={filterEndDateFocused ? 'date' : 'text'}
+        placeholder="To: dd/mm/yyyy"
+        value={filterEndDate}
+        onChange={(e) => setFilterEndDate(e.target.value)}
+        onFocus={(e) => {
+          setFilterEndDateFocused(true);
+          e.target.type = 'date';
+          e.target.showPicker?.();
+        }}
+        onBlur={() => setFilterEndDateFocused(false)}
+        className="w-full border border-gray-200 rounded-lg px-2 sm:px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+      />
+    </div>
+  </div>
+
+  {/* Active filter indicator (unchanged) */}
+  {(filterStartDate || filterEndDate) && (
+    <div className="mt-2 flex items-center gap-2 text-xs text-gray-500 flex-wrap">
+      <span>📅 Filtering by start date:</span>
+      {filterStartDate && <span className="font-medium">{filterStartDate}</span>}
+      {filterStartDate && filterEndDate && <span>→</span>}
+      {filterEndDate && <span className="font-medium">{filterEndDate}</span>}
+      <button
+        onClick={() => { setFilterStartDate(''); setFilterEndDate(''); }}
+        className="text-red-500 hover:text-red-700 flex items-center gap-0.5 ml-1"
+      >
+        <X size={12} /> Clear
+      </button>
+    </div>
+  )}
+</div>
 
       {/* BOOKINGS TABLE */}
       {loading ? (

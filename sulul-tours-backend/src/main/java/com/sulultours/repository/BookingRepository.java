@@ -42,4 +42,17 @@ public interface BookingRepository extends JpaRepository<Booking, String> {
         @Param("startDate") LocalDateTime startDate,
         @Param("endDate") LocalDateTime endDate
     );
+
+    // ✅ Broker's own bookings (all time, newest first)
+List<Booking> findByUserIdOrderByCreatedAtDesc(String userId);
+
+// ✅ Broker's bookings created today
+@Query("SELECT b FROM Booking b WHERE b.user.id = :userId " +
+       "AND b.createdAt >= :startOfDay AND b.createdAt < :endOfDay " +
+       "ORDER BY b.createdAt DESC")
+List<Booking> findBrokerBookingsToday(
+    @Param("userId") String userId,
+    @Param("startOfDay") LocalDateTime startOfDay,
+    @Param("endOfDay") LocalDateTime endOfDay
+);
 }

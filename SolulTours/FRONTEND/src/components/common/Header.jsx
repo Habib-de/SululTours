@@ -26,6 +26,7 @@ const Header = ({ activeTab, onLogout, toggleSidebar }) => {
       case 'super_admin': return 'Super Admin';
       case 'fleet_manager': return 'Fleet Manager';
       case 'car_owner': return 'Car Owner';
+      case 'broker': return 'Broker';
       case 'client': return 'Client';
       default: return 'User';
     }

@@ -19,6 +19,7 @@ import java.util.List;
 public class UserService {
 
     private final UserRepository userRepository;
+    private final com.sulultours.repository.TenantRepository tenantRepository;
     private final PasswordEncoder passwordEncoder;
     private final AuditLogService auditLogService;
 
@@ -51,6 +52,61 @@ public class UserService {
 
     public List<User> getUsersByRoleAndTenant(RoleEnum role, String tenantId) {
         return userRepository.findByRoleAndTenantId(role, tenantId);
+    }
+
+     // ==========================================
+    // ✅ CREATE USER (used by FM to create brokers)
+    // ==========================================
+    @Transactional
+    public com.sulultours.dto.UserDTO createUser(String email, String name, String phone,
+                                                  String password, String roleStr, String tenantId) {
+        if (email == null || name == null || password == null || roleStr == null) {
+            throw new com.sulultours.exception.BadRequestException(
+                "email, name, password, and role are required");
+        }
+        if (userRepository.existsByEmail(email)) {
+            throw new com.sulultours.exception.BadRequestException(
+                "Email already registered: " + email);
+        }
+
+        RoleEnum role;
+        try {
+            role = RoleEnum.valueOf(roleStr);
+        } catch (IllegalArgumentException e) {
+            throw new com.sulultours.exception.BadRequestException("Invalid role: " + roleStr);
+        }
+
+        com.sulultours.entity.Tenant tenant = null;
+        if (tenantId != null && !tenantId.isEmpty()) {
+            tenant = tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new com.sulultours.exception.BadRequestException(
+                    "Tenant not found: " + tenantId));
+        }
+
+        User user = new User();
+        user.setEmail(email);
+        user.setName(name);
+        user.setPhone(phone);
+        user.setPasswordHash(passwordEncoder.encode(password));
+        user.setRole(role);
+        user.setTenant(tenant);
+        user.setStatus("active");  // ✅ FM-created accounts are active immediately
+
+        User saved = userRepository.save(user);
+
+        createAuditLog("USER_CREATED", "User", saved.getId(),
+            "User " + saved.getEmail() + " created with role: " + saved.getRole());
+
+        com.sulultours.dto.UserDTO dto = new com.sulultours.dto.UserDTO();
+        dto.setId(saved.getId());
+        dto.setEmail(saved.getEmail());
+        dto.setName(saved.getName());
+        dto.setPhone(saved.getPhone());
+        dto.setRole(saved.getRole().name());
+        dto.setStatus(saved.getStatus());
+        dto.setTenantId(tenant != null ? tenant.getId() : null);
+        dto.setCreatedAt(saved.getCreatedAt());
+        return dto;
     }
 
     @Transactional
