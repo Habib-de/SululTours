@@ -85,7 +85,12 @@ public Booking createBooking(Booking booking) {
             if ("car_hire".equals(savedBooking.getServiceType()) && savedBooking.getOwner() != null) {
                 try {
                     User owner = savedBooking.getOwner().getUser();
-                    if (owner != null) {
+                    // ✅ Skip if the broker is booking their own vehicle
+                    //    (prevents duplicate notification — they already get the "client" one below)
+                    boolean isSelfBooking = owner != null
+                            && savedBooking.getUser() != null
+                            && owner.getId().equals(savedBooking.getUser().getId());
+                    if (owner != null && !isSelfBooking) {
                         Notification ownerNotif = new Notification();
                         ownerNotif.setUser(owner);
                         ownerNotif.setTitle("📅 New Booking Request");
@@ -97,6 +102,8 @@ public Booking createBooking(Booking booking) {
                         
                         notificationService.createNotification(ownerNotif);
                         System.out.println("✅ Push notification sent to owner: " + owner.getEmail());
+                    } else if (isSelfBooking) {
+                        System.out.println("ℹ️ Broker booked own vehicle — skipping duplicate owner notification");
                     }
                 } catch (Exception e) {
                     System.err.println("⚠️ Failed to send notification to owner: " + e.getMessage());

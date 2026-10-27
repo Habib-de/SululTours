@@ -65,28 +65,63 @@ const CarOwners = ({ setActiveTab }) => {
     const response = await carOwnerService.getAll(tenantToUse);
     console.log('📊 API Response:', response);
     
-    let owners = [];
+        let owners = [];
     if (response?.success && response?.data) {
       owners = response.data;
-      
-      // ✅ FETCH REAL VEHICLE COUNT FOR EACH OWNER
-      for (let i = 0; i < owners.length; i++) {
-        try {
-          const vehicleResponse = await vehicleService.getByOwner(owners[i].id);
-          let vehicles = [];
-          if (vehicleResponse?.success && vehicleResponse?.data) {
-            vehicles = vehicleResponse.data;
-          } else if (Array.isArray(vehicleResponse)) {
-            vehicles = vehicleResponse;
+
+      // ✅ Fetch real vehicle count + role for each owner (parallel)
+      const enriched = await Promise.all(
+        owners.map(async (owner) => {
+          let vehicleCount = 0;
+          let userRole = null;
+
+          // 1. Count vehicles
+          try {
+            const vehicleResponse = await vehicleService.getByOwner(owner.id);
+            let vehicles = [];
+            if (vehicleResponse?.success && vehicleResponse?.data) vehicles = vehicleResponse.data;
+            else if (Array.isArray(vehicleResponse)) vehicles = vehicleResponse;
+            vehicleCount = vehicles.length;
+          } catch (e) {
+            console.error('Error getting vehicle count for owner:', e);
           }
-          owners[i].vehicleCount = vehicles.length;
-        } catch (e) {
-          console.error('Error getting vehicle count for owner:', e);
-          owners[i].vehicleCount = 0;
-        }
-      }
-      
-      console.log('✅ Found owners with updated vehicle counts:', owners.length);
+
+          // 2. Fetch user role via /users/{userId}
+          try {
+            if (owner.userId) {
+              const userResponse = await userService.getById(owner.userId);
+              const u = userResponse?.success ? userResponse.data : userResponse;
+              userRole = u?.role || null;
+            }
+          } catch (e) {
+            console.warn('Could not fetch role for owner', owner.id, e);
+          }
+
+          return {
+            ...owner,
+            vehicleCount,
+            userRole,
+          };
+        })
+      );
+
+      // ✅ Hide brokers with 0 vehicles — they're not fleet owners yet
+      const visible = enriched.filter((o) => {
+        const isBroker = o.userRole === 'broker';
+        if (isBroker && (!o.vehicleCount || o.vehicleCount === 0)) return false;
+        return true;
+      });
+
+      console.log(
+        '✅ Owners:',
+        enriched.length,
+        '→ visible after filter:',
+        visible.length,
+        '| Brokers hidden:',
+        enriched.length - visible.length
+      );
+
+      owners = visible;
     } else if (Array.isArray(response)) {
       owners = response;
     } else if (response?.data && Array.isArray(response.data)) {

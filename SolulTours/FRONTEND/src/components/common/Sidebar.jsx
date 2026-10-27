@@ -71,7 +71,7 @@ const Sidebar = ({ sidebarOpen, setSidebarOpen, activeTab, setActiveTab, navItem
       case 'super_admin': return 'Super Admin';
       case 'fleet_manager': return 'Fleet Manager';
       case 'car_owner': return 'Car Owner';
-      case 'broker': return 'Broker';
+      case 'broker': return 'Booking Agent';
       case 'client': return 'Client';
       default: return 'User';
     }

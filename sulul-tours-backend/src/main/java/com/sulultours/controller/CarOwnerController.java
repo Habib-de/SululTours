@@ -3,6 +3,8 @@ package com.sulultours.controller;
 import com.sulultours.dto.ApiResponse;
 import com.sulultours.dto.CarOwnerDTO;
 import com.sulultours.entity.CarOwner;
+import com.sulultours.entity.RoleEnum;
+import com.sulultours.entity.User;
 import com.sulultours.service.CarOwnerService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -20,6 +22,7 @@ import java.util.stream.Collectors;
 public class CarOwnerController {
 
     private final CarOwnerService carOwnerService;
+    private final com.sulultours.service.UserService userService;
 
     @GetMapping
     @PreAuthorize("permitAll()")
@@ -27,6 +30,23 @@ public class CarOwnerController {
         List<CarOwner> carOwners = carOwnerService.getAllCarOwners();
         List<CarOwnerDTO> dtos = carOwners.stream().map(this::convertToDTO).collect(Collectors.toList());
         return ResponseEntity.ok(ApiResponse.success(dtos));
+    }
+
+        /**
+     * GET /car-owners/me
+     * Returns (or lazily creates) the CarOwner profile of the logged-in user.
+     * Works for both car_owner AND broker users.
+     */
+    @GetMapping("/me")
+    @PreAuthorize("hasAnyRole('car_owner', 'broker')")
+    public ResponseEntity<ApiResponse<CarOwnerDTO>> getMyProfile() {
+        User current = userService.getCurrentUser();
+        if (current == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(ApiResponse.error("Not authenticated"));
+        }
+        CarOwner profile = carOwnerService.getOrCreateProfileForUser(current);
+        return ResponseEntity.ok(ApiResponse.success(convertToDTO(profile)));
     }
 
     @PostMapping

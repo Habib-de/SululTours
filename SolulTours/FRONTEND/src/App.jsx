@@ -94,6 +94,9 @@ import ClientProfile from './pages/client/ClientProfile';
 // ============================================
 import BrokerDashboard from './pages/broker/BrokerDashboard';
 import BrokerCarBookings from './pages/broker/BrokerCarBookings'; 
+import BrokerMyFleet from './pages/broker/BrokerMyFleet';
+import BrokerCombinedDashboard from './pages/broker/BrokerCombinedDashboard';
+import { carOwnerService, vehicleService } from './services/api';
 
 // ============================================
 // NOTIFICATIONS PAGE (ALL ROLES)
@@ -119,7 +122,7 @@ import {
 // ============================================
 // NAVIGATION ITEMS CONFIGURATION
 // ============================================
-const getNavItems = (role) => {
+const getNavItems = (role, brokerHasFleet = false) => {
   const commonItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   ];
@@ -144,7 +147,7 @@ const getNavItems = (role) => {
       // Car Hire
       { id: 'vehicles', label: 'Vehicles', icon: Car },
       { id: 'car-owners', label: 'Car Owners', icon: User },
-      { id: 'brokers', label: 'Brokers', icon: Users },
+      { id: 'brokers', label: 'Booking Agents', icon: Users },
       { id: 'maintenance', label: 'Maintenance', icon: Wrench },
       { id: 'car-bookings', label: 'Car Bookings', icon: Calendar },
       { id: 'car-crm', label: 'Customer CRM', icon: Users },
@@ -192,16 +195,18 @@ const getNavItems = (role) => {
       // { id: 'reports', label: 'Reports', icon: FileText },
     ],
 
-    // ========== BROKER (Sales Agent) ==========
-       [roles.BROKER]: [
-      ...commonItems,
-      { id: 'car-bookings', label: 'Car Hire Bookings', icon: Car },
-      // ⏳ Hidden until broker-specific pages are built:
-      // { id: 'tour-bookings', label: 'Tour Bookings', icon: Compass },
-      // { id: 'hajj-bookings', label: 'Hajj/Umra Bookings', icon: Map },
-      // { id: 'hotel-bookings', label: 'Hotel Bookings', icon: Building },
-      // { id: 'flight-bookings', label: 'Flight Bookings', icon: Plane },
-    ],
+        // ========== BROKER (Sales Agent) ==========
+    [roles.BROKER]: (() => {
+      const items = [
+        ...commonItems,
+        { id: 'car-bookings', label: 'Car Hire Bookings', icon: Car },
+        { id: 'my-fleet', label: 'My Fleet', icon: Truck }
+      ];
+      if (brokerHasFleet) {
+        items.push({ id: 'my-business', label: 'My Business', icon: BarChart3 });
+      }
+      return items;
+    })(),
 
 
     // ========== CLIENT ==========
@@ -314,18 +319,15 @@ const PageRenderer = ({ tab, role, setActiveTab }) => {
 
   // ========== BROKER PAGES ==========
     if (role === roles.BROKER) {
-    const brokerPages = {
-      dashboard: <BrokerDashboard setActiveTab={setActiveTab} />,
-      'car-bookings': <BrokerCarBookings setActiveTab={setActiveTab} />,   // ✅ broker-specific
-      // ⏳ Other service booking pages — hidden for now
-      // 'tour-bookings': <BrokerTourBookings setActiveTab={setActiveTab} />,
-      // 'hajj-bookings': <BrokerHajjBookings setActiveTab={setActiveTab} />,
-      // 'hotel-bookings': <BrokerHotelBookings setActiveTab={setActiveTab} />,
-      // 'flight-bookings': <BrokerFlightBookings setActiveTab={setActiveTab} />,
-      notifications: <NotificationsPage setActiveTab={setActiveTab} />,
-    };
-    return brokerPages[tab] || <BrokerDashboard setActiveTab={setActiveTab} />;
-  }
+  const brokerPages = {
+    dashboard: <BrokerDashboard setActiveTab={setActiveTab} />,
+    'car-bookings': <BrokerCarBookings setActiveTab={setActiveTab} />,
+    'my-fleet': <BrokerMyFleet setActiveTab={setActiveTab} />,
+    'my-business': <BrokerCombinedDashboard setActiveTab={setActiveTab} />,
+    notifications: <NotificationsPage setActiveTab={setActiveTab} />,
+  };
+  return brokerPages[tab] || <BrokerDashboard setActiveTab={setActiveTab} />;
+}
 
   // ========== CLIENT PAGES ==========
   if (role === roles.CLIENT) {
@@ -358,10 +360,74 @@ const AppContent = ({ onLogout, userRole }) => {
     return savedTab || 'dashboard';
   });
 
+  // ✅ Broker fleet state (derived from backend, NOT localStorage)
+  const [brokerHasFleet, setBrokerHasFleet] = useState(false);
+
   // Save active tab to localStorage
   useEffect(() => {
     localStorage.setItem('travel_agency_active_tab', activeTab);
   }, [activeTab]);
+
+  // ✅ Fetch broker fleet state from backend whenever the broker changes
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadBrokerFleet = async () => {
+      const role = currentUser?.role;
+      if (role !== 'broker') {
+        setBrokerHasFleet(false);
+        return;
+      }
+
+      try {
+        const profileRes = await carOwnerService.getMyProfile();
+        let profile = null;
+        if (profileRes?.success && profileRes?.data) profile = profileRes.data;
+        else if (profileRes?.id) profile = profileRes;
+
+        if (!profile?.id) {
+          if (!cancelled) setBrokerHasFleet(false);
+          return;
+        }
+
+        const vehiclesRes = await vehicleService.getByOwner(profile.id);
+        let vehicles = [];
+        if (vehiclesRes?.success && vehiclesRes?.data) vehicles = vehiclesRes.data;
+        else if (Array.isArray(vehiclesRes)) vehicles = vehiclesRes;
+
+        if (!cancelled) setBrokerHasFleet(vehicles.length > 0);
+      } catch (err) {
+        console.error('Error loading broker fleet:', err);
+        if (!cancelled) setBrokerHasFleet(false);
+      }
+    };
+
+    if (currentUser?.id) loadBrokerFleet();
+
+    return () => { cancelled = true; };
+  }, [currentUser?.id, currentUser?.role]);
+
+  // ✅ Expose a global refresh so BrokerMyFleet can trigger a re-fetch after saving a vehicle
+  useEffect(() => {
+    window.refreshBrokerFleet = async () => {
+      if (currentUser?.role !== 'broker') return;
+      try {
+        const profileRes = await carOwnerService.getMyProfile();
+        let profile = null;
+        if (profileRes?.success && profileRes?.data) profile = profileRes.data;
+        else if (profileRes?.id) profile = profileRes;
+        if (!profile?.id) { setBrokerHasFleet(false); return; }
+        const vehiclesRes = await vehicleService.getByOwner(profile.id);
+        let vehicles = [];
+        if (vehiclesRes?.success && vehiclesRes?.data) vehicles = vehiclesRes.data;
+        else if (Array.isArray(vehiclesRes)) vehicles = vehiclesRes;
+        setBrokerHasFleet(vehicles.length > 0);
+      } catch (err) {
+        console.error('refreshBrokerFleet failed:', err);
+      }
+    };
+    return () => { delete window.refreshBrokerFleet; };
+  }, [currentUser?.id, currentUser?.role]);
 
   // Listen for navigation messages
   useEffect(() => {
@@ -414,8 +480,8 @@ const AppContent = ({ onLogout, userRole }) => {
     }
   }, [userRole]);
 
-  // Get navigation items based on role
-  const navItems = getNavItems(currentUser?.role || roles.CLIENT);
+  // Get navigation items based on role + live fleet state
+  const navItems = getNavItems(currentUser?.role || roles.CLIENT, brokerHasFleet);
 
   console.log('🔍 AppContent - currentUser:', currentUser);
   console.log('🔍 AppContent - userRole:', userRole);

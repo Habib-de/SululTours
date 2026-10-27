@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Calendar, DollarSign, Clock, CheckCircle, XCircle,
   AlertCircle, X, RefreshCw, Plus, Eye, Car,
-  Compass, MapPin, Hotel, Plane, Receipt, ArrowRight
+  Compass, MapPin, Hotel, Plane, Receipt, ArrowRight, Truck
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { bookingService } from '../../services/api';
@@ -66,6 +66,13 @@ const BrokerDashboard = ({ setActiveTab }) => {
     hour: '2-digit', minute: '2-digit', hour12: true
   }) : 'N/A';
 
+  // ✅ Base money only (no commission) — rate × days − discount
+  const baseTotal = (b) =>
+    (b.vehiclePricePerDay || 0) * (b.days || 0) - (b.discountAmount || 0);
+
+  const baseOutstanding = (b) =>
+    Math.max(0, baseTotal(b) - (b.paidAmount || 0));
+
   const getServiceIcon = (type) => {
     const map = {
       car_hire: Car, car: Car, tour: Compass, tour_package: Compass,
@@ -97,6 +104,7 @@ const BrokerDashboard = ({ setActiveTab }) => {
 
   const services = [
     { key: 'car-bookings', label: 'Car Hire', icon: Car, color: 'bg-blue-50 text-blue-600 border-blue-200' },
+    { key: 'my-fleet', label: 'My Fleet', icon: Truck, color: 'bg-amber-50 text-amber-600 border-amber-200' },
     { key: 'tour-bookings', label: 'Tours', icon: Compass, color: 'bg-green-50 text-green-600 border-green-200' },
     { key: 'hajj-bookings', label: 'Hajj / Umra', icon: MapPin, color: 'bg-purple-50 text-purple-600 border-purple-200' },
     { key: 'hotel-bookings', label: 'Hotels', icon: Hotel, color: 'bg-orange-50 text-orange-600 border-orange-200' },
@@ -109,6 +117,11 @@ const BrokerDashboard = ({ setActiveTab }) => {
   };
 
   const displayBookings = showAllHistory ? allMyBookings : todayBookings;
+
+  // ✅ Frontend-computed base totals (overrides backend's totalSales/totalDebt which include commission)
+  const todaySalesBase = todayBookings.reduce((sum, b) => sum + baseTotal(b), 0);
+  const todayCollectedBase = todayBookings.reduce((sum, b) => sum + (b.paidAmount || 0), 0);
+  const todayDebtBase = todayBookings.reduce((sum, b) => sum + baseOutstanding(b), 0);
 
   if (loading) {
     return (
@@ -161,7 +174,7 @@ const BrokerDashboard = ({ setActiveTab }) => {
         </div>
       </div>
 
-      {/* Today's Sales Cards */}
+      {/* Today's Sales Cards — all base money */}
       <div className="mb-4">
         <h2 className="text-sm font-semibold text-gray-600 mb-3">Today's Sales</h2>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -177,21 +190,21 @@ const BrokerDashboard = ({ setActiveTab }) => {
               <DollarSign size={18} />
               <span className="text-xs">Today's Sales</span>
             </div>
-            <p className="text-2xl font-bold text-gray-800 mt-1">{fmt(todayStats.totalSales)}</p>
+            <p className="text-2xl font-bold text-gray-800 mt-1">{fmt(todaySalesBase)}</p>
           </div>
           <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">
             <div className="flex items-center gap-2 text-purple-600">
               <Receipt size={18} />
               <span className="text-xs">Collected</span>
             </div>
-            <p className="text-2xl font-bold text-gray-800 mt-1">{fmt(todayStats.totalCollected)}</p>
+            <p className="text-2xl font-bold text-gray-800 mt-1">{fmt(todayCollectedBase)}</p>
           </div>
           <div className="bg-red-50 border border-red-200 rounded-xl p-4">
             <div className="flex items-center gap-2 text-red-600">
               <AlertCircle size={18} />
               <span className="text-xs">Outstanding</span>
             </div>
-            <p className="text-2xl font-bold text-gray-800 mt-1">{fmt(todayStats.totalDebt)}</p>
+            <p className="text-2xl font-bold text-gray-800 mt-1">{fmt(todayDebtBase)}</p>
           </div>
         </div>
       </div>
@@ -263,6 +276,7 @@ const BrokerDashboard = ({ setActiveTab }) => {
               <tbody className="divide-y divide-gray-100">
                 {displayBookings.map((b) => {
                   const badge = getStatusBadge(b.status);
+                  const bOutstanding = baseOutstanding(b);
                   return (
                     <tr key={b.id} className="hover:bg-gray-50">
                       <td className="px-3 py-3 text-xs font-mono text-gray-600">{b.reference}</td>
@@ -278,11 +292,11 @@ const BrokerDashboard = ({ setActiveTab }) => {
                       </td>
                       <td className="px-3 py-3 text-xs text-gray-500">{fmtDate(b.createdAt)}</td>
                       <td className="px-3 py-3 text-right text-sm font-semibold text-blue-600">
-                        {fmt(b.totalPrice)}
+                        {fmt(baseTotal(b))}
                       </td>
                       <td className="px-3 py-3 text-right text-xs">
-                        {(b.remainingBalance || 0) > 0 ? (
-                          <span className="text-red-600 font-medium">{fmt(b.remainingBalance)}</span>
+                        {bOutstanding > 0 ? (
+                          <span className="text-red-600 font-medium">{fmt(bOutstanding)}</span>
                         ) : (
                           <span className="text-green-600">Paid</span>
                         )}
@@ -392,7 +406,7 @@ const BrokerDashboard = ({ setActiveTab }) => {
               <div className="grid grid-cols-2 gap-3 bg-gray-50 rounded-lg p-4">
                 <div>
                   <span className="text-xs text-gray-500">Total:</span>
-                  <span className="text-sm font-bold text-blue-600"> {fmt(selectedBooking.totalPrice)}</span>
+                  <span className="text-sm font-bold text-blue-600"> {fmt(baseTotal(selectedBooking))}</span>
                 </div>
                 <div>
                   <span className="text-xs text-gray-500">Paid:</span>
@@ -400,8 +414,8 @@ const BrokerDashboard = ({ setActiveTab }) => {
                 </div>
                 <div className="col-span-2">
                   <span className="text-xs text-gray-500">Outstanding:</span>
-                  <span className={`text-sm font-bold ${selectedBooking.remainingBalance > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                    {' '}{fmt(selectedBooking.remainingBalance)}
+                  <span className={`text-sm font-bold ${baseOutstanding(selectedBooking) > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                    {' '}{fmt(baseOutstanding(selectedBooking))}
                   </span>
                 </div>
                 <div>

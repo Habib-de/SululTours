@@ -5,6 +5,8 @@ import com.sulultours.dto.VehicleDTO;
 import com.sulultours.entity.CarOwner;
 import com.sulultours.entity.Tenant;
 import com.sulultours.entity.Vehicle;
+import com.sulultours.entity.RoleEnum;
+import com.sulultours.entity.User;
 import com.sulultours.exception.ResourceNotFoundException;
 import com.sulultours.repository.CarOwnerRepository;
 import com.sulultours.repository.TenantRepository;
@@ -27,6 +29,8 @@ public class VehicleController {
     private final VehicleService vehicleService;
     private final TenantRepository tenantRepository;      // ✅ ADD THIS
     private final CarOwnerRepository carOwnerRepository;  // ✅ ADD THIS
+    private final com.sulultours.service.UserService userService;
+    private final com.sulultours.service.CarOwnerService carOwnerService;
 
      @GetMapping
     @PreAuthorize("permitAll()")
@@ -37,7 +41,7 @@ public class VehicleController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('super_admin', 'fleet_manager', 'car_owner')")
+    @PreAuthorize("hasAnyRole('super_admin', 'fleet_manager', 'car_owner', 'broker')")
     public ResponseEntity<ApiResponse<VehicleDTO>> createVehicle(@RequestBody VehicleDTO vehicleDTO) {
         // ✅ Convert DTO to Entity
         Vehicle vehicle = new Vehicle();
@@ -80,6 +84,15 @@ public class VehicleController {
             CarOwner owner = carOwnerRepository.findById(vehicleDTO.getOwnerId())
                     .orElseThrow(() -> new ResourceNotFoundException("Car owner not found with id: " + vehicleDTO.getOwnerId()));
             vehicle.setOwner(owner);
+        } else {
+            // ✅ If caller is a broker, auto-attach their own CarOwner profile
+            User current = userService.getCurrentUser();
+            if (current != null && current.getRole() == RoleEnum.broker) {
+                CarOwner myProfile = carOwnerService.getOrCreateProfileForUser(current);
+                vehicle.setOwner(myProfile);
+                System.out.println("✅ Broker " + current.getEmail()
+                        + " — auto-attached CarOwner profile: " + myProfile.getId());
+            }
         }
         
         Vehicle created = vehicleService.createVehicle(vehicle);
@@ -128,10 +141,21 @@ public class VehicleController {
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('super_admin', 'fleet_manager', 'car_owner')")
+    @PreAuthorize("hasAnyRole('super_admin', 'fleet_manager', 'car_owner', 'broker')")
     public ResponseEntity<ApiResponse<VehicleDTO>> updateVehicle(@PathVariable String id, @RequestBody VehicleDTO vehicleDTO) {
-        // ✅ Convert DTO to Entity for update
+                // ✅ Convert DTO to Entity for update
         Vehicle vehicle = vehicleService.getVehicleById(id);
+
+        // ✅ Brokers can only update vehicles they own
+        User current = userService.getCurrentUser();
+        if (current != null && current.getRole() == RoleEnum.broker) {
+            if (vehicle.getOwner() == null
+                    || vehicle.getOwner().getUser() == null
+                    || !vehicle.getOwner().getUser().getId().equals(current.getId())) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                        .body(ApiResponse.error("You can only update your own vehicles"));
+            }
+        }
         
         // Update basic fields
         vehicle.setRegistration(vehicleDTO.getRegistration());
@@ -168,13 +192,12 @@ public class VehicleController {
             vehicle.setTenant(null);
         }
         
-        // ✅ Update Owner from ownerId
+        // ✅ Update Owner from ownerId — only if explicitly provided
+        //    (prevents accidental un-assignment when ownerId is omitted in the payload)
         if (vehicleDTO.getOwnerId() != null) {
             CarOwner owner = carOwnerRepository.findById(vehicleDTO.getOwnerId())
                     .orElseThrow(() -> new ResourceNotFoundException("Car owner not found with id: " + vehicleDTO.getOwnerId()));
             vehicle.setOwner(owner);
-        } else {
-            vehicle.setOwner(null);
         }
         
         Vehicle updated = vehicleService.updateVehicle(id, vehicle);

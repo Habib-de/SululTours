@@ -589,14 +589,21 @@ const [filterEndDateFocused, setFilterEndDateFocused] = useState(false);
     if (paymentForm.paymentMethod === 'M_PESA' && (!paymentForm.mpesaCode || paymentForm.mpesaCode.length < 6)) return showNotification('Please enter valid M-Pesa code', 'error');
     setIsSubmitting(true);
     try {
-      const updatedBooking = {
-        ...selectedBooking,
-        paidAmount: (selectedBooking.paidAmount || 0) + amount,
-        remainingBalance: selectedBooking.totalPrice - ((selectedBooking.paidAmount || 0) + amount),
-        paymentStatus: (selectedBooking.totalPrice - ((selectedBooking.paidAmount || 0) + amount)) <= 0 ? 'PAID' : 'PARTIAL',
-        paymentMethod: paymentForm.paymentMethod,
-        mpesaCode: paymentForm.mpesaCode || selectedBooking.mpesaCode
-      };
+      const baseTotal =
+  (selectedBooking.vehiclePricePerDay || 0) * (selectedBooking.days || 0) -
+  (selectedBooking.discountAmount || 0);
+
+const newPaid = (selectedBooking.paidAmount || 0) + amount;
+const newRemaining = baseTotal - newPaid;
+
+const updatedBooking = {
+  ...selectedBooking,
+  paidAmount: newPaid,
+  remainingBalance: newRemaining,
+  paymentStatus: newRemaining <= 0 ? 'PAID' : 'PARTIAL',
+  paymentMethod: paymentForm.paymentMethod,
+  mpesaCode: paymentForm.mpesaCode || selectedBooking.mpesaCode
+};
       const response = await bookingService.update(selectedBooking.id, updatedBooking);
       if (response?.success) {
         showNotification(`✅ Payment of KES ${amount} recorded`);
@@ -663,7 +670,7 @@ const [filterEndDateFocused, setFilterEndDateFocused] = useState(false);
       <div class="section"><h2>👤 Customer</h2><div class="row"><span>Name:</span><span>${booking.customerName || 'N/A'}</span></div><div class="row"><span>Phone:</span><span>${booking.customerPhone || 'N/A'}</span></div><div class="row"><span>Email:</span><span>${booking.customerEmail || 'N/A'}</span></div><div class="row"><span>ID:</span><span>${booking.customerIdNumber || 'N/A'}</span></div></div>
       <div class="section"><h2>🚗 Vehicle</h2><div class="row"><span>Vehicle:</span><span>${vehicle ? vehicle.make + ' ' + vehicle.model : 'N/A'}</span></div><div class="row"><span>Reg:</span><span>${vehicle?.registration || 'N/A'}</span></div><div class="row"><span>Rate/Day:</span><span>KSh ${(booking.vehiclePricePerDay || 0).toLocaleString()}</span></div></div>
       <div class="section"><h2>📅 Booking</h2><div class="row"><span>Start:</span><span>${formatDateTime(booking.startDate)}</span></div><div class="row"><span>End:</span><span>${formatDateTime(booking.endDate)}</span></div><div class="row"><span>Days:</span><span>${booking.days || 0}</span></div></div>
-      <div class="section"><h2>💰 Payment</h2><div class="row"><span>Total:</span><span>KSh ${(booking.totalPrice || 0).toLocaleString()}</span></div><div class="row"><span>Paid:</span><span>KSh ${(booking.paidAmount || 0).toLocaleString()}</span></div>${booking.remainingBalance > 0 ? `<div class="row"><span>Outstanding:</span><span>KSh ${booking.remainingBalance.toLocaleString()}</span></div>` : ''}</div>
+      <div class="section"><h2>💰 Payment</h2><div class="row"><span>Total:</span><span>KSh ${((booking.vehiclePricePerDay || 0) * (booking.days || 0) - (booking.discountAmount || 0)).toLocaleString()}</span></div><div class="row"><span>Paid:</span><span>KSh ${(booking.paidAmount || 0).toLocaleString()}</span></div>${booking.remainingBalance > 0 ? `<div class="row"><span>Outstanding:</span><span>KSh ${booking.remainingBalance.toLocaleString()}</span></div>` : ''}</div>
       <div class="footer"><p>© 2026 Sulul Tours & Travel</p></div>
       <script>window.onload=()=>window.print()</script>
       </body></html>`);
@@ -714,8 +721,18 @@ const [filterEndDateFocused, setFilterEndDateFocused] = useState(false);
   const pendingBookings = bookings.filter(b => b.status === 'pending').length;
   const confirmedBookings = bookings.filter(b => b.status === 'confirmed').length;
   const completedBookings = bookings.filter(b => b.status === 'completed').length;
-  const totalRevenue = bookings.reduce((sum, b) => sum + (b.totalPrice || 0), 0);
-  const totalCreditOutstanding = bookings.filter(b => (b.remainingBalance || 0) > 0).reduce((sum, b) => sum + (b.remainingBalance || 0), 0);
+  const totalRevenue = bookings.reduce((sum, b) => {
+  const base = (b.vehiclePricePerDay || 0) * (b.days || 0);
+  const discount = b.discountAmount || 0;
+  return sum + (base - discount);
+}, 0);
+  const totalCreditOutstanding = bookings.reduce((sum, b) => {
+  const base =
+    (b.vehiclePricePerDay || 0) * (b.days || 0) -
+    (b.discountAmount || 0);
+  const outstanding = base - (b.paidAmount || 0);
+  return sum + (outstanding > 0 ? outstanding : 0);
+}, 0);
   const availableVehicles = vehicles.filter(v => v.status === 'active');
 
   return (
@@ -742,9 +759,18 @@ const [filterEndDateFocused, setFilterEndDateFocused] = useState(false);
             <div className="p-6 space-y-4">
               <div className="bg-gray-50 rounded-lg p-3 text-sm">
                 <div className="flex justify-between"><span className="text-gray-600">Customer:</span><span className="font-medium">{selectedBooking.customerName}</span></div>
-                <div className="flex justify-between mt-1"><span className="text-gray-600">Total:</span><span className="font-medium">KES {(selectedBooking.totalPrice || 0).toLocaleString()}</span></div>
+                <div className="flex justify-between mt-1"><span className="text-gray-600">Total:</span><span className="font-medium">KES {((selectedBooking.vehiclePricePerDay || 0) * (selectedBooking.days || 0) - (selectedBooking.discountAmount || 0)).toLocaleString()}</span></div>
                 <div className="flex justify-between mt-1"><span className="text-gray-600">Paid:</span><span className="font-medium text-green-600">KES {(selectedBooking.paidAmount || 0).toLocaleString()}</span></div>
-                <div className="flex justify-between mt-1 border-t border-gray-200 pt-1"><span className="text-gray-600 font-semibold">Remaining:</span><span className="font-bold text-orange-600">KES {(selectedBooking.remainingBalance || 0).toLocaleString()}</span></div>
+                <div className="flex justify-between mt-1 border-t border-gray-200 pt-1">
+  <span className="text-gray-600 font-semibold">Remaining:</span>
+  <span className="font-bold text-orange-600">
+    KES {Math.max(0,
+      ((selectedBooking.vehiclePricePerDay || 0) * (selectedBooking.days || 0) -
+       (selectedBooking.discountAmount || 0)) -
+      (selectedBooking.paidAmount || 0)
+    ).toLocaleString()}
+  </span>
+</div>
               </div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Amount (KES) *</label>
                 <input type="number" value={paymentForm.amount}
@@ -1085,7 +1111,14 @@ const [filterEndDateFocused, setFilterEndDateFocused] = useState(false);
                   <div className="col-span-2"><span className="text-xs text-gray-500">Start:</span> <span className="text-sm font-medium ml-1">{formatDateTime(selectedBooking.startDate)}</span></div>
                   <div className="col-span-2"><span className="text-xs text-gray-500">End:</span> <span className="text-sm font-medium ml-1">{formatDateTime(selectedBooking.endDate)}</span></div>
                   <div><span className="text-xs text-gray-500">Days:</span> <span className="text-sm font-medium">{selectedBooking.days || 0}</span></div>
-                  <div><span className="text-xs text-gray-500">Total:</span> <span className="text-sm font-bold text-green-600">KSh {(selectedBooking.totalPrice || 0).toLocaleString()}</span></div>
+                  <div>
+  <span className="text-xs text-gray-500">Total:</span>{' '}
+  <span className="text-sm font-bold text-green-600">
+    KSh {(
+      (selectedBooking.vehiclePricePerDay || 0) * (selectedBooking.days || 0) - (selectedBooking.discountAmount || 0)
+    ).toLocaleString()}
+  </span>
+</div>
                 </div>
               </div>
               <div>
@@ -1094,9 +1127,21 @@ const [filterEndDateFocused, setFilterEndDateFocused] = useState(false);
                   <div><span className="text-xs text-gray-500">Method:</span> <span className="text-sm font-medium flex items-center gap-1">{getPaymentMethodIcon(selectedBooking.paymentMethod)} {selectedBooking.paymentMethod || 'N/A'}</span></div>
                   <div><span className="text-xs text-gray-500">Status:</span> <span className={`text-sm font-medium px-2 py-0.5 rounded-full ${getPaymentStatusBadge(selectedBooking.paymentStatus).color}`}>{getPaymentStatusBadge(selectedBooking.paymentStatus).label}</span></div>
                   <div><span className="text-xs text-gray-500">Paid:</span> <span className="text-sm font-medium text-green-600">KSh {(selectedBooking.paidAmount || 0).toLocaleString()}</span></div>
-                  {selectedBooking.remainingBalance > 0 && (
-                    <div className="col-span-2"><span className="text-xs text-gray-500">Outstanding:</span> <span className="text-sm font-bold text-orange-600">KSh {selectedBooking.remainingBalance.toLocaleString()}</span></div>
-                  )}
+                  {(() => {
+  const baseTotal =
+    (selectedBooking.vehiclePricePerDay || 0) * (selectedBooking.days || 0) -
+    (selectedBooking.discountAmount || 0);
+  const baseOutstanding = baseTotal - (selectedBooking.paidAmount || 0);
+  if (baseOutstanding <= 0) return null;
+  return (
+    <div className="col-span-2">
+      <span className="text-xs text-gray-500">Outstanding:</span>
+      <span className="text-sm font-bold text-orange-600">
+        KSh {baseOutstanding.toLocaleString()}
+      </span>
+    </div>
+  );
+})()}
                 </div>
               </div>
               {selectedBooking.notes && (
@@ -1532,8 +1577,7 @@ const [filterEndDateFocused, setFilterEndDateFocused] = useState(false);
     <th className="px-3 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap">Days</th>
     <th className="px-3 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap">Subtotal</th>
     <th className="px-3 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap">Discount</th>
-    <th className="px-3 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap">Final Fee</th>
-    <th className="px-3 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap">Commission</th>
+    <th className="px-3 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap">Base Fee</th>
     <th className="px-3 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap">Payment</th>
     <th className="px-3 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap">Status</th>
     <th className="px-3 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap">Actions</th>
@@ -1601,23 +1645,19 @@ const [filterEndDateFocused, setFilterEndDateFocused] = useState(false);
     )}
   </td>
 
-  {/* Final Fee */}
+    {/* Final Fee — base only (no commission) */}
   <td className="px-3 py-3 text-right whitespace-nowrap">
-    <span className="text-sm font-bold text-green-600">KSh {(booking.totalPrice || 0).toLocaleString()}</span>
-    {booking.bookingFeePerDay && (
-      <p className="text-[10px] text-gray-400">@{booking.bookingFeePerDay.toLocaleString()}/day</p>
-    )}
+    <span className="text-sm font-bold text-green-600">
+      KSh {(
+        (booking.vehiclePricePerDay || 0) * (booking.days || 0) - (booking.discountAmount || 0)
+      ).toLocaleString()}
+    </span>
+    <p className="text-[10px] text-gray-400">
+      @{booking.vehiclePricePerDay?.toLocaleString() || 0}/day
+    </p>
   </td>
 
-  {/* Commission */}
-  <td className="px-3 py-3 text-right whitespace-nowrap">
-    <span className={`text-sm font-semibold ${(booking.commission || 0) > 0 ? 'text-purple-600' : 'text-gray-400'}`}>
-      {(booking.commission || 0) > 0 ? '+' : ''}KSh {(booking.commission || 0).toLocaleString()}
-    </span>
-    {(booking.commission || 0) > 0 && (
-      <span className="text-[10px] text-purple-500 block">Profit</span>
-    )}
-  </td>
+  
 
   {/* Payment */}
   <td className="px-3 py-3 text-center whitespace-nowrap">
@@ -1628,11 +1668,18 @@ const [filterEndDateFocused, setFilterEndDateFocused] = useState(false);
         booking.paymentStatus === 'PARTIAL' ? 'bg-blue-100 text-blue-800' :
         'bg-yellow-100 text-yellow-800'
       }`}>{booking.paymentStatus || 'PENDING'}</span>
-      {(booking.remainingBalance || 0) > 0 && (
-        <span className="text-[10px] text-orange-600 font-medium">
-          O/S: KSh {(booking.remainingBalance || 0).toLocaleString()}
-        </span>
-      )}
+      {(() => {
+  const baseTotal =
+    (booking.vehiclePricePerDay || 0) * (booking.days || 0) -
+    (booking.discountAmount || 0);
+  const baseOutstanding = baseTotal - (booking.paidAmount || 0);
+  if (baseOutstanding <= 0) return null;
+  return (
+    <span className="text-[10px] text-orange-600 font-medium">
+      O/S: KSh {baseOutstanding.toLocaleString()}
+    </span>
+  );
+})()}
       {booking.mpesaCode && (
         <span className="text-[8px] font-mono text-blue-500 truncate max-w-[80px]">{booking.mpesaCode}</span>
       )}

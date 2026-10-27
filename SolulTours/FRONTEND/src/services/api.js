@@ -342,6 +342,13 @@ export const carOwnerService = {
     return response;
   },
 
+    // ✅ Get (or lazily create) the current user's own CarOwner profile
+  // Works for both car_owner AND broker roles
+  getMyProfile: async () => {
+    const response = await apiCall('/car-owners/me', 'GET');
+    return response;
+  },
+
   getByUser: async (userId) => {
     const response = await apiCall(`/car-owners/user/${userId}`, 'GET');
     return response;
