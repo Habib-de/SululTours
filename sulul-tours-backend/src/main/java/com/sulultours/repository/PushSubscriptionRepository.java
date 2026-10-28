@@ -2,6 +2,9 @@ package com.sulultours.repository;
 
 import com.sulultours.entity.PushSubscription;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import java.util.List;
 import java.util.Optional;
@@ -18,4 +21,8 @@ public interface PushSubscriptionRepository extends JpaRepository<PushSubscripti
     void deleteByEndpoint(String endpoint);
     
     long countByUserId(String userId);
+    
+    @Modifying
+    @Query("delete from PushSubscription p where p.user.id = :userId")
+    int deleteByUserId(@Param("userId") String userId);
 }

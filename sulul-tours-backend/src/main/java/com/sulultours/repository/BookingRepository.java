@@ -2,7 +2,8 @@ package com.sulultours.repository;
 
 import com.sulultours.entity.Booking;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Query;     
+import org.springframework.data.jpa.repository.Query; 
+import org.springframework.data.jpa.repository.Modifying;    
 import org.springframework.data.repository.query.Param; 
 import org.springframework.stereotype.Repository;
 import java.time.LocalDateTime; 
@@ -55,4 +56,8 @@ List<Booking> findBrokerBookingsToday(
     @Param("startOfDay") LocalDateTime startOfDay,
     @Param("endOfDay") LocalDateTime endOfDay
 );
+// ⚡ NEW — clears user_id on all this user's bookings (keeps the bookings)
+@Modifying
+@Query("update Booking b set b.user = null where b.user.id = :userId")
+int nullifyUser(@Param("userId") String userId);
 }

@@ -4,6 +4,7 @@ import com.sulultours.entity.RoleEnum;
 import com.sulultours.entity.User;
 import com.sulultours.exception.ResourceNotFoundException;
 import com.sulultours.repository.UserRepository;
+import com.sulultours.repository.NotificationRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.context.SecurityContextHolder; 
 import org.springframework.security.core.userdetails.UserDetails;
@@ -22,6 +23,13 @@ public class UserService {
     private final com.sulultours.repository.TenantRepository tenantRepository;
     private final PasswordEncoder passwordEncoder;
     private final AuditLogService auditLogService;
+    private final NotificationRepository notificationRepository;
+    private final com.sulultours.repository.BookingRepository bookingRepository;
+    private final com.sulultours.repository.AuditLogRepository auditLogRepository;
+    private final com.sulultours.repository.PushSubscriptionRepository pushSubscriptionRepository;
+    private final com.sulultours.repository.ExpenseRepository expenseRepository;
+    private final com.sulultours.repository.CarOwnerRepository carOwnerRepository;
+    private final com.sulultours.repository.VehicleRepository vehicleRepository;
 
     public User getUserById(String id) {
         return userRepository.findById(id)
@@ -177,6 +185,37 @@ public User updateUser(String id, User userDetails) {
     public void deleteUser(String id) {
         User user = getUserById(id);
         String userEmail = user.getEmail();
+
+        // 1. Delete notifications (no business value)
+        notificationRepository.deleteByUserId(id);
+
+        // 2. Delete push subscriptions (no business value)
+        pushSubscriptionRepository.deleteByUserId(id);
+
+        // 3. Nullify bookings (keep booking, remove user link)
+        bookingRepository.nullifyUser(id);
+
+        // 4. Nullify audit logs (keep log, remove user link)
+        auditLogRepository.nullifyUser(id);
+
+        // 5. Nullify expense attributions (keep expense, remove user link)
+        expenseRepository.nullifyCreatedBy(id);
+
+        // 6. Handle car_owner profile — block if they own vehicles
+        com.sulultours.entity.CarOwner carOwnerProfile =
+                carOwnerRepository.findByUserId(id).orElse(null);
+        if (carOwnerProfile != null) {
+                        java.util.List<com.sulultours.entity.Vehicle> vehicles =
+                    vehicleRepository.findByOwnerId(carOwnerProfile.getId());
+            if (vehicles != null && !vehicles.isEmpty()) {
+                throw new com.sulultours.exception.BadRequestException(
+                    "Cannot delete this user: they own " + vehicles.size() +
+                    " vehicle(s). Reassign or delete the vehicles first.");
+            }
+            carOwnerRepository.delete(carOwnerProfile);
+        }
+
+        // 7. Finally delete the user
         userRepository.delete(user);
 
             
