@@ -691,7 +691,7 @@ const BrokerCombinedDashboard = ({ setActiveTab }) => {
         <div className="min-w-0">
           <h1 className="text-lg sm:text-2xl font-bold text-gray-800 truncate">My Business Dashboard</h1>
           <p className="text-[11px] sm:text-sm text-gray-500 mt-0.5 sm:mt-1 truncate">
-            <span className="font-bold sm:font-semibold text-blue-600">Broker</span>
+            <span className="font-bold sm:font-semibold text-blue-600">Booking Agent</span>
             {' + '}
             <span className="font-bold sm:font-semibold text-amber-600">Car Owner</span>
           </p>
