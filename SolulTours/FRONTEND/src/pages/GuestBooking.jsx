@@ -1272,11 +1272,25 @@ const performGuestBooking = async (signatureData = null) => {
       showNotification(response.message || 'Failed to create booking', 'error');
     }
   } catch (error) {
-    console.error('❌ Booking submission failed:', error);
-    showNotification(`❌ Failed to create booking: ${error.message}`, 'error');
-  } finally {
-    setIsSubmitting(false);
-  }
+  console.error('❌ Booking submission failed:', error);
+  
+  // ✅ Extract the server's friendly message
+  const serverMessage = error?.message
+    || error?.response?.data?.message
+    || error?.body?.message
+    || 'Failed to create booking. Please try again.';
+  
+  // ✅ Show as toast (visible for a few seconds)
+  showNotification(`❌ ${serverMessage}`, 'error');
+  
+  // ✅ Also show as modal alert so the guest can't miss it
+  alert(`❌ Booking Failed\n\n${serverMessage}`);
+  
+  // ✅ Return the form to editable state so they can pick new dates
+  setIsPreview(false);
+} finally {
+  setIsSubmitting(false);
+}
 };
 
 // Terms handlers

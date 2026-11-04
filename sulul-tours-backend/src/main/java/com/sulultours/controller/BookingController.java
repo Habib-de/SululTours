@@ -113,42 +113,84 @@ public ResponseEntity<ApiResponse<BookingDTO>> createBooking(@RequestBody Bookin
 }
 
 @PostMapping("/public")
-    public ResponseEntity<ApiResponse<BookingDTO>> createPublicBooking(@RequestBody BookingDTO bookingDTO) {
-        try {
-            System.out.println("========================================");
-            System.out.println("📥 PUBLIC GUEST BOOKING:");
-            System.out.println("  - customerName: " + bookingDTO.getCustomerName());
-            System.out.println("  - serviceType: " + bookingDTO.getServiceType());
-            System.out.println("  - totalPrice: " + bookingDTO.getTotalPrice());
-            System.out.println("========================================");
-            
-            // Set default tenant (sulul)
-            Tenant defaultTenant = tenantRepository.findBySubdomain("sulul")
-                    .orElseThrow(() -> new ResourceNotFoundException("Default tenant 'sulul' not found."));
-            
-            bookingDTO.setTenantId(defaultTenant.getId());
-            bookingDTO.setIsGuestBooking(true);
-            
-            // Set default status if not provided
-            if (bookingDTO.getStatus() == null) {
-                bookingDTO.setStatus("pending");
-            }
-            
-            Booking booking = convertToEntity(bookingDTO);
-            Booking created = bookingService.createBooking(booking);
-            
-            return ResponseEntity.status(HttpStatus.CREATED)
-                    .body(ApiResponse.success("Guest booking created successfully", convertToDTO(created)));
-        } catch (Exception e) {
-            e.printStackTrace();
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(ApiResponse.error("Failed to create guest booking: " + e.getMessage()));
-        }
-    }
+public ResponseEntity<ApiResponse<BookingDTO>> createPublicBooking(@RequestBody BookingDTO bookingDTO) {
+    try {
+        System.out.println("========================================");
+        System.out.println("📥 PUBLIC GUEST BOOKING:");
+        System.out.println("  - customerName: " + bookingDTO.getCustomerName());
+        System.out.println("  - serviceType: " + bookingDTO.getServiceType());
+        System.out.println("========================================");
 
-    // ✅ PUBLIC - GET all bookings (for guest availability check)
+        // Set default tenant (sulul)
+        Tenant defaultTenant = tenantRepository.findBySubdomain("sulul")
+                .orElseThrow(() -> new ResourceNotFoundException("Default tenant 'sulul' not found."));
+
+        bookingDTO.setTenantId(defaultTenant.getId());
+        bookingDTO.setIsGuestBooking(true);
+
+        // 🚨 1. FORCE SERVER STATE - Ignore what the client sent 🚨
+        bookingDTO.setStatus("pending");
+        bookingDTO.setPaymentStatus("PENDING");
+        bookingDTO.setPaidAmount(BigDecimal.ZERO);
+        bookingDTO.setCommission(BigDecimal.ZERO);
+        bookingDTO.setDiscountType("NONE");
+        bookingDTO.setDiscountValue(null);
+        bookingDTO.setDiscountAmount(BigDecimal.ZERO);
+        bookingDTO.setBookingFeePerDay(null);
+        bookingDTO.setMpesaCode(null);
+
+        // 🚨 2. RECALCULATE TOTAL PRICE & CHECK AVAILABILITY 🚨
+        if ("car_hire".equals(bookingDTO.getServiceType()) && bookingDTO.getVehicleId() != null) {
+            
+            // Recalculate price
+            Vehicle vehicle = vehicleRepository.findById(bookingDTO.getVehicleId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Vehicle not found"));
+
+            long days = java.time.Duration.between(
+                    bookingDTO.getStartDate(), 
+                    bookingDTO.getEndDate()
+            ).toDays();
+            if (days < 1) days = 1;
+
+            BigDecimal dailyRate = vehicle.getPricePerDay() != null ? vehicle.getPricePerDay() : BigDecimal.ZERO;
+            BigDecimal total = dailyRate.multiply(BigDecimal.valueOf(days));
+
+            bookingDTO.setVehiclePricePerDay(dailyRate);
+            bookingDTO.setVehicleRegistration(vehicle.getRegistration());
+            bookingDTO.setVehicleMake(vehicle.getMake());
+            bookingDTO.setVehicleModel(vehicle.getModel());
+            bookingDTO.setDays((int) days);
+            bookingDTO.setSubtotal(total);
+            bookingDTO.setTotalPrice(total);
+            bookingDTO.setRemainingBalance(total);
+
+            // Check Availability (THE CRITICAL FIX)
+            boolean available = bookingService.isVehicleAvailable(
+                    bookingDTO.getVehicleId(),
+                    bookingDTO.getStartDate(),
+                    bookingDTO.getEndDate()
+            );
+            if (!available) {
+                return ResponseEntity.status(HttpStatus.CONFLICT)
+                        .body(ApiResponse.error("This vehicle is already booked for the selected dates. Please choose different dates or another vehicle."));
+            }
+        }
+
+        Booking booking = convertToEntity(bookingDTO);
+        Booking created = bookingService.createBooking(booking);
+
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success("Guest booking created successfully", convertToDTO(created)));
+    } catch (Exception e) {
+        e.printStackTrace();
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(ApiResponse.error("Failed to create guest booking: " + e.getMessage()));
+    }
+}
+
+    // ✅ AUTHENTICATED ONLY - GET all bookings (back-office use)
 @GetMapping
-@PreAuthorize("permitAll()")
+@PreAuthorize("hasAnyRole('super_admin', 'fleet_manager')")
 public ResponseEntity<ApiResponse<List<BookingDTO>>> getAllBookings() {
     List<Booking> bookings = bookingService.getAllBookings();
     List<BookingDTO> dtos = bookings.stream().map(this::convertToDTO).collect(Collectors.toList());
@@ -217,13 +259,14 @@ public ResponseEntity<ApiResponse<List<BookingDTO>>> getAllBookings() {
     }
 
     @GetMapping("/reference/{reference}")
-    public ResponseEntity<ApiResponse<BookingDTO>> getBookingByReference(@PathVariable String reference) {
-        Booking booking = bookingService.getBookingByReference(reference);
-        return ResponseEntity.ok(ApiResponse.success(convertToDTO(booking)));
-    }
+@PreAuthorize("hasAnyRole('super_admin', 'fleet_manager', 'client', 'broker')")
+public ResponseEntity<ApiResponse<BookingDTO>> getBookingByReference(@PathVariable String reference) {
+    Booking booking = bookingService.getBookingByReference(reference);
+    return ResponseEntity.ok(ApiResponse.success(convertToDTO(booking)));
+}
 
     @GetMapping("/tenant/{tenantId}")
-    @PreAuthorize("hasAnyRole('super_admin', 'fleet_manager', 'client')")
+    @PreAuthorize("hasAnyRole('super_admin', 'fleet_manager', 'client', 'broker')")
     public ResponseEntity<ApiResponse<List<BookingDTO>>> getBookingsByTenant(@PathVariable String tenantId) {
         List<Booking> bookings = bookingService.getBookingsByTenant(tenantId);
         List<BookingDTO> dtos = bookings.stream().map(this::convertToDTO).collect(Collectors.toList());
@@ -231,7 +274,7 @@ public ResponseEntity<ApiResponse<List<BookingDTO>>> getAllBookings() {
     }
 
     @GetMapping("/user/{userId}")
-    @PreAuthorize("hasAnyRole('super_admin', 'fleet_manager', 'client')")
+    @PreAuthorize("hasAnyRole('super_admin', 'fleet_manager', 'client', 'broker')")
     public ResponseEntity<ApiResponse<List<BookingDTO>>> getBookingsByUser(@PathVariable String userId) {
         List<Booking> bookings = bookingService.getBookingsByUser(userId);
         List<BookingDTO> dtos = bookings.stream().map(this::convertToDTO).collect(Collectors.toList());
@@ -239,7 +282,7 @@ public ResponseEntity<ApiResponse<List<BookingDTO>>> getAllBookings() {
     }
 
     @GetMapping("/service/{serviceType}")
-    @PreAuthorize("hasAnyRole('super_admin', 'fleet_manager', 'client')")
+    @PreAuthorize("hasAnyRole('super_admin', 'fleet_manager', 'client', 'broker')")
     public ResponseEntity<ApiResponse<List<BookingDTO>>> getBookingsByServiceType(@PathVariable String serviceType) {
         List<Booking> bookings = bookingService.getBookingsByServiceType(serviceType);
         List<BookingDTO> dtos = bookings.stream().map(this::convertToDTO).collect(Collectors.toList());
@@ -247,19 +290,29 @@ public ResponseEntity<ApiResponse<List<BookingDTO>>> getAllBookings() {
     }
 
     @GetMapping("/status/{status}")
-    @PreAuthorize("hasAnyRole('super_admin', 'fleet_manager', 'client')")
+    @PreAuthorize("hasAnyRole('super_admin', 'fleet_manager', 'client', 'broker')")
     public ResponseEntity<ApiResponse<List<BookingDTO>>> getBookingsByStatus(@PathVariable String status) {
         List<Booking> bookings = bookingService.getBookingsByStatus(status);
         List<BookingDTO> dtos = bookings.stream().map(this::convertToDTO).collect(Collectors.toList());
         return ResponseEntity.ok(ApiResponse.success(dtos));
     }
 
-    @PutMapping("/{id}")
+        @PutMapping("/{id}")
     @PreAuthorize("hasAnyRole('super_admin', 'fleet_manager', 'client', 'broker')")
     public ResponseEntity<ApiResponse<BookingDTO>> updateBooking(@PathVariable String id, @RequestBody BookingDTO bookingDTO) {
-        Booking booking = convertToEntity(bookingDTO);
-        Booking updated = bookingService.updateBooking(id, booking);
-        return ResponseEntity.ok(ApiResponse.success("Booking updated successfully", convertToDTO(updated)));
+        try {
+            Booking booking = convertToEntity(bookingDTO);
+            Booking updated = bookingService.updateBooking(id, booking);
+            return ResponseEntity.ok(ApiResponse.success("Booking updated successfully", convertToDTO(updated)));
+        } catch (IllegalStateException e) {
+            // ✅ Catches the double-booking conflict from BookingService
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(ApiResponse.error(e.getMessage()));
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiResponse.error("Failed to update booking: " + e.getMessage()));
+        }
     }
 
     @PatchMapping("/{id}/status")
@@ -283,28 +336,31 @@ public ResponseEntity<ApiResponse<List<BookingDTO>>> getAllBookings() {
     // ============================================
 
     /**
-     * Check if a specific vehicle is available for the given dates
-     * GET /bookings/availability/vehicle/{vehicleId}?startDate=2024-09-01T08:00&endDate=2024-09-05T18:00
-     */
-    @GetMapping("/availability/vehicle/{vehicleId}")
-    @PreAuthorize("hasAnyRole('super_admin', 'fleet_manager', 'client')")
-    public ResponseEntity<ApiResponse<Boolean>> checkVehicleAvailability(
-            @PathVariable String vehicleId,
-            @RequestParam String startDate,
-            @RequestParam String endDate) {
+ * Check if a specific vehicle is available for the given dates
+ * GET /bookings/availability/vehicle/{vehicleId}?startDate=2024-09-01T08:00&endDate=2024-09-05T18:00
+ * 
+ * ✅ PUBLIC — safe, returns only a boolean (no PII exposed).
+ * Used by guest booking flow to check availability without auth.
+ */
+@GetMapping("/availability/vehicle/{vehicleId}")
+@PreAuthorize("permitAll()")
+public ResponseEntity<ApiResponse<Boolean>> checkVehicleAvailability(
+        @PathVariable String vehicleId,
+        @RequestParam String startDate,
+        @RequestParam String endDate) {
+    
+    try {
+        // Parse the date strings to LocalDateTime
+        LocalDateTime start = LocalDateTime.parse(startDate);
+        LocalDateTime end = LocalDateTime.parse(endDate);
         
-        try {
-            // Parse the date strings to LocalDateTime
-            LocalDateTime start = LocalDateTime.parse(startDate);
-            LocalDateTime end = LocalDateTime.parse(endDate);
-            
-            boolean isAvailable = bookingService.isVehicleAvailable(vehicleId, start, end);
-            return ResponseEntity.ok(ApiResponse.success(isAvailable));
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(ApiResponse.error("Invalid date format: " + e.getMessage()));
-        }
+        boolean isAvailable = bookingService.isVehicleAvailable(vehicleId, start, end);
+        return ResponseEntity.ok(ApiResponse.success(isAvailable));
+    } catch (Exception e) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.error("Invalid date format: " + e.getMessage()));
     }
+}
 
     /**
      * Get all available vehicles for the given dates

@@ -25,7 +25,7 @@ public class CarOwnerController {
     private final com.sulultours.service.UserService userService;
 
     @GetMapping
-    @PreAuthorize("permitAll()")
+    @PreAuthorize("hasAnyRole('super_admin', 'fleet_manager')")
     public ResponseEntity<ApiResponse<List<CarOwnerDTO>>> getAllCarOwners() {
         List<CarOwner> carOwners = carOwnerService.getAllCarOwners();
         List<CarOwnerDTO> dtos = carOwners.stream().map(this::convertToDTO).collect(Collectors.toList());
@@ -58,21 +58,21 @@ public class CarOwnerController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("permitAll()")
+    @PreAuthorize("hasAnyRole('super_admin', 'fleet_manager')")
     public ResponseEntity<ApiResponse<CarOwnerDTO>> getCarOwnerById(@PathVariable String id) {
         CarOwner carOwner = carOwnerService.getCarOwnerById(id);
         return ResponseEntity.ok(ApiResponse.success(convertToDTO(carOwner)));
     }
 
     @GetMapping("/user/{userId}")
-    @PreAuthorize("permitAll()")
+    @PreAuthorize("hasAnyRole('super_admin', 'fleet_manager')")
     public ResponseEntity<ApiResponse<CarOwnerDTO>> getCarOwnerByUserId(@PathVariable String userId) {
         CarOwner carOwner = carOwnerService.getCarOwnerByUserId(userId);
         return ResponseEntity.ok(ApiResponse.success(convertToDTO(carOwner)));
     }
 
     @GetMapping("/tenant/{tenantId}")
-    @PreAuthorize("permitAll()")
+    @PreAuthorize("hasAnyRole('super_admin', 'fleet_manager')")
     public ResponseEntity<ApiResponse<List<CarOwnerDTO>>> getCarOwnersByTenant(@PathVariable String tenantId) {
         List<CarOwner> carOwners = carOwnerService.getCarOwnersByTenant(tenantId);
         List<CarOwnerDTO> dtos = carOwners.stream().map(this::convertToDTO).collect(Collectors.toList());
@@ -80,7 +80,7 @@ public class CarOwnerController {
     }
 
     @GetMapping("/status/{status}")
-    @PreAuthorize("permitAll()")
+    @PreAuthorize("hasAnyRole('super_admin', 'fleet_manager')")
     public ResponseEntity<ApiResponse<List<CarOwnerDTO>>> getCarOwnersByStatus(@PathVariable String status) {
         List<CarOwner> carOwners = carOwnerService.getCarOwnersByStatus(status);
         List<CarOwnerDTO> dtos = carOwners.stream().map(this::convertToDTO).collect(Collectors.toList());

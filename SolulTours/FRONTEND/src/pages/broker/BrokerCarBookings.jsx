@@ -10,7 +10,7 @@ import {
   Receipt, ChevronLeft, ChevronRight, FileText  
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { bookingService, vehicleService, carOwnerService } from '../../services/api';
+import { bookingService, vehicleService } from '../../services/api';
 import TermsAndConditions from '../../components/common/TermsAndConditions';
 
 const formatDateTime = (dateString) => {
@@ -52,7 +52,6 @@ const BrokerCarBookings = ({ setActiveTab }) => {
   const [bookings, setBookings] = useState([]);
   const [allBookings, setAllBookings] = useState([]);
   const [vehicles, setVehicles] = useState([]);
-  const [carOwners, setCarOwners] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
@@ -137,10 +136,6 @@ const [filterEndDateFocused, setFilterEndDateFocused] = useState(false);
       const vehiclesResponse = await vehicleService.getAll(tenantToUse);
       let vehiclesData = vehiclesResponse?.success && vehiclesResponse?.data ? vehiclesResponse.data : (Array.isArray(vehiclesResponse) ? vehiclesResponse : []);
       setVehicles(vehiclesData);
-
-      const ownersResponse = await carOwnerService.getAll(tenantToUse);
-      let ownersData = ownersResponse?.success && ownersResponse?.data ? ownersResponse.data : (Array.isArray(ownersResponse) ? ownersResponse : []);
-      setCarOwners(ownersData);
 
       const bookingsResponse = await bookingService.getAll(tenantToUse);
       let bookingsData = bookingsResponse?.success && bookingsResponse?.data ? bookingsResponse.data : (Array.isArray(bookingsResponse) ? bookingsResponse : []);

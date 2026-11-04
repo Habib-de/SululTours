@@ -142,12 +142,11 @@ const CarHire = ({ setActiveTab, user }) => {
           allBookingsData = bookingsResponse;
         }
         
-        carBookings = allBookingsData.filter(b => 
-          b.serviceType === 'car_hire' || 
-          b.serviceType === 'car' ||
-          b.serviceType === 'Car Hire'
-        );
-        setAllBookings(carBookings);
+        carBookings = allBookingsData.filter(b => {
+  const st = (b.serviceType || '').toLowerCase().replace(/[\s_]/g, '');
+  return st === 'carhire' || st === 'car';
+});
+setAllBookings(carBookings);
       } catch (bookingsError) {
         console.error('❌ Error loading bookings:', bookingsError);
       }
@@ -255,17 +254,26 @@ const CarHire = ({ setActiveTab, user }) => {
   };
 
   const getUserBookings = () => {
-    const userToCheck = loggedInUser || user || currentUser;
-    if (!userToCheck) return [];
-    
-    return allBookings.filter(b => {
-      if (b.userId && b.userId === userToCheck.id) return true;
-      if (b.customerEmail && b.customerEmail.toLowerCase() === userToCheck.email?.toLowerCase()) return true;
-      if (b.customerPhone && b.customerPhone === userToCheck.phone) return true;
-      if (b.userEmail && b.userEmail.toLowerCase() === userToCheck.email?.toLowerCase()) return true;
-      return false;
-    });
-  };
+  const userToCheck = loggedInUser || user || currentUser;
+  if (!userToCheck) return [];
+
+  const userEmail = userToCheck.email?.toLowerCase().trim();
+  const userPhone = userToCheck.phone;
+  const userName  = userToCheck.name?.toLowerCase().trim();
+  const userId    = userToCheck.id;
+
+  return allBookings.filter(b => {
+    const bookingEmail = (b.customerEmail || b.userEmail || b.email || '').toLowerCase().trim();
+    const bookingPhone = b.customerPhone || b.phone || '';
+    const bookingName  = (b.customerName || '').toLowerCase().trim();
+
+    if (b.userId && String(b.userId) === String(userId)) return true;
+    if (bookingEmail && bookingEmail === userEmail) return true;
+    if (bookingPhone && bookingPhone === userPhone) return true;
+    if (bookingName && userName && bookingName === userName) return true;
+    return false;
+  });
+};
 
   const getActiveBookingsCount = (vehicleId) => {
     return allBookings.filter(b => 

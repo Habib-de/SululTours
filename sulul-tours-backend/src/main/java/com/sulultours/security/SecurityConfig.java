@@ -7,7 +7,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 // import org.springframework.http.HttpMethod; 
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
-// import org.springframework.security.config.annotation.method.configuration.EnableGlobalMethodSecurity;  // ⬅️ You can keep this import
+import org.springframework.security.config.annotation.method.configuration.EnableGlobalMethodSecurity;  // ⬅️ You can keep this import
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -23,7 +23,7 @@ import java.util.Arrays;
 
 @Configuration
 @EnableWebSecurity
-// @EnableGlobalMethodSecurity(prePostEnabled = true)  // ⬅️ COMMENT THIS OUT
+@EnableGlobalMethodSecurity(prePostEnabled = true)  // ⬅️ COMMENT THIS OUT
 @RequiredArgsConstructor
 public class SecurityConfig {
 
@@ -57,8 +57,10 @@ public class SecurityConfig {
                 .antMatchers(HttpMethod.GET, "/hotels/**").permitAll()
                 .antMatchers(HttpMethod.GET, "/room-types/**").permitAll()
                 .antMatchers(HttpMethod.GET, "/flights/**").permitAll()
-                .antMatchers(HttpMethod.GET, "/car-owners/**").permitAll()
-                .antMatchers(HttpMethod.GET, "/bookings/**").permitAll()
+                .antMatchers("/car-owners/**").authenticated()
+                .antMatchers(HttpMethod.POST, "/bookings/public").permitAll()
+                .antMatchers(HttpMethod.GET, "/bookings/availability/**").permitAll()
+                .antMatchers("/bookings/**").authenticated()
                 // All other endpoints need authentication
                 .antMatchers("/dashboard/**").authenticated()
                 .antMatchers("/reports/**").authenticated()

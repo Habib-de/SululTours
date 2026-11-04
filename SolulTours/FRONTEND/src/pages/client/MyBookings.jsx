@@ -66,20 +66,16 @@ const MyBookings = ({ setActiveTab, user }) => {
 
   // Load user data and bookings
   useEffect(() => {
-    const userData = currentUser || user || JSON.parse(localStorage.getItem('user') || '{}');
-    const tid = userData?.tenantId || null;
-    console.log('🔍 Tenant ID from user:', tid);
-    setTenantId(tid);
-    
-    if (userData) {
-      setLoggedInUser(userData);
-      console.log('✅ Logged in user set:', userData);
-      loadBookings(userData, tid);
-    } else {
-      console.warn('⚠️ No user found');
-      setLoading(false);
-    }
-  }, []);
+  if (!currentUser?.token) {
+    console.log('⏳ MyBookings: waiting for auth token...');
+    return;
+  }
+  const tid = currentUser?.tenantId || null;
+  console.log('🔍 Tenant ID from user:', tid);
+  setTenantId(tid);
+  setLoggedInUser(currentUser);
+  loadBookings(currentUser, tid);
+}, [currentUser?.token]);
 
   const showNotification = (message, type = 'success') => {
     setNotification({ message, type });
@@ -88,13 +84,21 @@ const MyBookings = ({ setActiveTab, user }) => {
 
   // ✅ Load bookings from API
   const loadBookings = async (userToCheck, tid) => {
-    setLoading(true);
+  setLoading(true);
+  
+  try {
+    const tenantToUse = tid || tenantId;
+
+    // ✅ NEW: require both tenant AND user
+    if (!userToCheck?.email) {
+      console.warn('⚠️ No user yet, skipping fetch');
+      setLoading(false);
+      return;
+    }
+
+    console.log('🔍 Loading bookings with tenantId:', tenantToUse);
     
-    try {
-      const tenantToUse = tid || tenantId;
-      console.log('🔍 Loading bookings with tenantId:', tenantToUse);
-      
-      if (!tenantToUse) {
+    if (!tenantToUse) {
         console.warn('⚠️ No tenantId available, loading from localStorage');
         loadFromLocalStorage(userToCheck);
         setLoading(false);
@@ -127,17 +131,20 @@ const MyBookings = ({ setActiveTab, user }) => {
         console.log('   User ID:', userId);
         console.log('   Phone:', userPhone);
         
-        userBookings = bookingsData.filter(b => {
-          const bookingEmail = (b.customerEmail || b.userEmail || b.email || '').toLowerCase().trim();
-          const bookingUserId = b.userId || b.id;
-          const bookingPhone = b.customerPhone || b.phone || '';
-          
-          if (bookingUserId && bookingUserId === userId) return true;
-          if (bookingEmail && bookingEmail === userEmail) return true;
-          if (bookingPhone && bookingPhone === userPhone) return true;
-          
-          return false;
-        });
+        const userName = userToCheck.name?.toLowerCase().trim();
+
+userBookings = bookingsData.filter(b => {
+  const bookingEmail = (b.customerEmail || b.userEmail || b.email || '').toLowerCase().trim();
+  const bookingUserId = b.userId; 
+  const bookingPhone = b.customerPhone || b.phone || '';
+  const bookingName = (b.customerName || '').toLowerCase().trim();
+  
+  if (bookingUserId && bookingUserId === userId) return true;
+  if (bookingEmail && bookingEmail === userEmail) return true;
+  if (bookingPhone && bookingPhone === userPhone) return true;
+  if (bookingName && userName && bookingName === userName) return true;  // ✅ ADD THIS
+  return false;
+});
         
         console.log(`✅ Found ${userBookings.length} bookings for user`);
       } else {
@@ -180,17 +187,20 @@ const MyBookings = ({ setActiveTab, user }) => {
         const userId = userToCheck.id;
         const userPhone = userToCheck.phone;
         
-        userBookings = allCombinedBookings.filter(b => {
-          const bookingEmail = (b.customerEmail || b.userEmail || b.email || '').toLowerCase().trim();
-          const bookingUserId = b.userId || b.id;
-          const bookingPhone = b.customerPhone || b.phone || '';
-          
-          if (bookingUserId && bookingUserId === userId) return true;
-          if (bookingEmail && bookingEmail === userEmail) return true;
-          if (bookingPhone && bookingPhone === userPhone) return true;
-          
-          return false;
-        });
+        const userName = userToCheck.name?.toLowerCase().trim();
+
+userBookings = allCombinedBookings.filter(b => {
+  const bookingEmail = (b.customerEmail || b.userEmail || b.email || '').toLowerCase().trim();
+  const bookingUserId = b.userId;
+  const bookingPhone = b.customerPhone || b.phone || '';
+  const bookingName = (b.customerName || '').toLowerCase().trim();
+  
+  if (bookingUserId && bookingUserId === userId) return true;
+  if (bookingEmail && bookingEmail === userEmail) return true;
+  if (bookingPhone && bookingPhone === userPhone) return true;
+  if (bookingName && userName && bookingName === userName) return true;  // ✅ ADD THIS
+  return false;
+});
       } else {
         userBookings = allCombinedBookings;
       }

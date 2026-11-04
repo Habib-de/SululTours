@@ -506,7 +506,24 @@ const AppContent = ({ onLogout, userRole }) => {
 // ============================================
 // MAIN APP COMPONENT - FIXED VERSION
 // ============================================
+const restoreStandaloneAuthKeys = () => {
+  try {
+    const saved = localStorage.getItem('travel_agency_auth');
+    if (!saved) return;
+    const parsed = JSON.parse(saved);
+    if (!parsed) return;
+    if (parsed.token) localStorage.setItem('token', parsed.token);
+    localStorage.setItem('user', JSON.stringify(parsed));
+    if (parsed.role) localStorage.setItem('role', parsed.role);
+  } catch (e) {
+    console.warn('⚠️ Could not restore auth keys:', e.message);
+  }
+};
+
 const App = () => {
+  // ✅ Restore standalone auth keys BEFORE anything else reads them
+  restoreStandaloneAuthKeys();
+
   // ✅ Check for reset page
   const urlParams = new URLSearchParams(window.location.search);
   const resetToken = urlParams.get('token');
@@ -581,6 +598,10 @@ const App = () => {
     setIsAuthenticated(true);
     localStorage.setItem('travel_agency_auth', JSON.stringify(userData));
     localStorage.setItem('travel_agency_role', userData.role);
+    // ✅ ALSO persist the standalone keys that api.js reads
+    if (userData?.token) localStorage.setItem('token', userData.token);
+    localStorage.setItem('user', JSON.stringify(userData));
+    if (userData?.role) localStorage.setItem('role', userData.role);
     setAuthScreen('login');
   };
 

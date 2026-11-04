@@ -27,7 +27,7 @@ import java.util.stream.Collectors;
 @RestController
 @RequestMapping("/expenses")
 @RequiredArgsConstructor
-@PreAuthorize("hasAnyRole('super_admin', 'fleet_manager', 'car_owner')")
+@PreAuthorize("hasAnyRole('super_admin', 'fleet_manager', 'car_owner', 'broker')")
 public class ExpenseController {
 
     private final ExpenseService expenseService;

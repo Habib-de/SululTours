@@ -282,14 +282,18 @@ const CarBookings = ({ setActiveTab }) => {
 
 
   useEffect(() => {
-  const userData = currentUser || JSON.parse(localStorage.getItem('user') || '{}');
-  const tid = userData?.tenantId || null;
-  console.log('🔍 Tenant ID from localStorage:', tid);
+  if (!currentUser?.token) {
+    console.log('⏳ CarBookings: waiting for auth token...');
+    return;
+  }
+  const tid = currentUser?.tenantId || null;
   setTenantId(tid);
-  
-  // ✅ Pass tenantId directly to load function
+  if (!tid) {
+    console.warn('⚠️ CarBookings: no tenantId on currentUser');
+    return;
+  }
   loadData(tid);
-}, []);
+}, [currentUser?.token]);
 
   const showNotification = (message, type = 'success') => {
     setNotification({ message, type });
@@ -301,8 +305,14 @@ const CarBookings = ({ setActiveTab }) => {
   
   try {
     const tenantToUse = tid || tenantId;
-    console.log('🔍 Loading car bookings data with tenantId:', tenantToUse);
-    
+
+    // ✅ NEW: bail out if there's no token at all
+    if (!localStorage.getItem('token')) {
+      console.warn('⚠️ No auth token, skipping API call');
+      setLoading(false);
+      return;
+    }
+
     if (!tenantToUse) {
       console.warn('⚠️ No tenantId available, skipping API call');
       setLoading(false);
@@ -1219,9 +1229,17 @@ const performEditBooking = async (signatureData = null) => {
     } else {
       showNotification('Failed to update booking: ' + (response?.message || 'Unknown error'), 'error');
     }
-  } catch (error) {
+    } catch (error) {
     console.error('Error updating booking:', error);
-    showNotification('Failed to update booking. Please try again.', 'error');
+    
+    // ✅ Extract the exact error message thrown by api.js
+    const errorMessage = error.message || 'Failed to update booking. Please try again.';
+    
+    // ✅ Show the exact server message in the red toast
+    showNotification(`❌ ${errorMessage}`, 'error');
+    
+    // ✅ Also show a popup so they definitely see it
+    alert(`❌ Update Failed\n\n${errorMessage}`);
   }
   
   setIsSubmitting(false);

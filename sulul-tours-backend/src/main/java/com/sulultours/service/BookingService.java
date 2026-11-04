@@ -279,54 +279,83 @@ public Booking createBooking(Booking booking) {
 
 
     @Transactional
-    public Booking updateBooking(String id, Booking bookingDetails) {
-        Booking booking = getBookingById(id);
-        booking.setVehicle(bookingDetails.getVehicle());   // ← ADD THIS LINE
-        booking.setOwner(bookingDetails.getOwner());
-        // Customer Info
-        booking.setCustomerName(bookingDetails.getCustomerName());
-        booking.setCustomerEmail(bookingDetails.getCustomerEmail());
-        booking.setCustomerPhone(bookingDetails.getCustomerPhone());
-        booking.setCustomerIdNumber(bookingDetails.getCustomerIdNumber());
-        booking.setCustomerIdImage(bookingDetails.getCustomerIdImage());
-        booking.setCustomerLicenseImage(bookingDetails.getCustomerLicenseImage());
-        booking.setCustomerLicenseNumber(bookingDetails.getCustomerLicenseNumber());
+public Booking updateBooking(String id, Booking bookingDetails) {
+    Booking booking = getBookingById(id);
+    
+    // 🚨 THE FIX: Check for conflicts BEFORE saving new dates 🚨
+    if ("car_hire".equals(bookingDetails.getServiceType()) 
+        && bookingDetails.getVehicle() != null 
+        && bookingDetails.getStartDate() != null 
+        && bookingDetails.getEndDate() != null) {
         
-        // Vehicle & Service Info
-        booking.setVehicleRegistration(bookingDetails.getVehicleRegistration());
-        booking.setVehicleMake(bookingDetails.getVehicleMake());
-        booking.setVehicleModel(bookingDetails.getVehicleModel());
-        booking.setVehiclePricePerDay(bookingDetails.getVehiclePricePerDay());
-        booking.setDays(bookingDetails.getDays());
-        booking.setStartDate(bookingDetails.getStartDate());
-        booking.setEndDate(bookingDetails.getEndDate());
-        booking.setStartTime(bookingDetails.getStartTime());
-        booking.setEndTime(bookingDetails.getEndTime());
+        // 1. Find any bookings that overlap with the NEW dates
+        List<Booking> conflicts = bookingRepository.findOverlappingBookings(
+            bookingDetails.getVehicle().getId(),
+            bookingDetails.getStartDate(),
+            bookingDetails.getEndDate()
+        );
         
-        // Booking Fee & Discount
-        booking.setBookingFeePerDay(bookingDetails.getBookingFeePerDay());
-        booking.setCommission(bookingDetails.getCommission());
-        booking.setSubtotal(bookingDetails.getSubtotal());
-        booking.setDiscountType(bookingDetails.getDiscountType());
-        booking.setDiscountValue(bookingDetails.getDiscountValue());
-        booking.setDiscountAmount(bookingDetails.getDiscountAmount());
-        booking.setVehicleConditionImages(bookingDetails.getVehicleConditionImages());
+        // 2. Check if any of those conflicts belong to SOMEONE ELSE
+        // (We ignore the booking we are currently editing)
+        boolean hasRealConflict = conflicts.stream()
+            .anyMatch(c -> !c.getId().equals(id));
         
-        // Payment
-        booking.setTotalPrice(bookingDetails.getTotalPrice());
-        booking.setPaidAmount(bookingDetails.getPaidAmount());
-        booking.setRemainingBalance(bookingDetails.getRemainingBalance());
-        booking.setPaymentMethod(bookingDetails.getPaymentMethod());
-        booking.setPaymentStatus(bookingDetails.getPaymentStatus());
-        booking.setMpesaCode(bookingDetails.getMpesaCode());
-        
-        // Status & Notes
-        booking.setStatus(bookingDetails.getStatus());
-        booking.setNotes(bookingDetails.getNotes());
-        
-        booking.setUpdatedAt(LocalDateTime.now());
-        return bookingRepository.save(booking);
+        // 3. If yes, STOP and throw an error
+        if (hasRealConflict) {
+            throw new IllegalStateException(
+                "This vehicle is already booked by someone else for those dates. Please choose different dates."
+            );
+        }
     }
+    
+    // --- THE REST IS THE SAME AS BEFORE ---
+    booking.setVehicle(bookingDetails.getVehicle());
+    booking.setOwner(bookingDetails.getOwner());
+    
+    // Customer Info
+    booking.setCustomerName(bookingDetails.getCustomerName());
+    booking.setCustomerEmail(bookingDetails.getCustomerEmail());
+    booking.setCustomerPhone(bookingDetails.getCustomerPhone());
+    booking.setCustomerIdNumber(bookingDetails.getCustomerIdNumber());
+    booking.setCustomerIdImage(bookingDetails.getCustomerIdImage());
+    booking.setCustomerLicenseImage(bookingDetails.getCustomerLicenseImage());
+    booking.setCustomerLicenseNumber(bookingDetails.getCustomerLicenseNumber());
+    
+    // Vehicle & Service Info
+    booking.setVehicleRegistration(bookingDetails.getVehicleRegistration());
+    booking.setVehicleMake(bookingDetails.getVehicleMake());
+    booking.setVehicleModel(bookingDetails.getVehicleModel());
+    booking.setVehiclePricePerDay(bookingDetails.getVehiclePricePerDay());
+    booking.setDays(bookingDetails.getDays());
+    booking.setStartDate(bookingDetails.getStartDate());
+    booking.setEndDate(bookingDetails.getEndDate());
+    booking.setStartTime(bookingDetails.getStartTime());
+    booking.setEndTime(bookingDetails.getEndTime());
+    
+    // Booking Fee & Discount
+    booking.setBookingFeePerDay(bookingDetails.getBookingFeePerDay());
+    booking.setCommission(bookingDetails.getCommission());
+    booking.setSubtotal(bookingDetails.getSubtotal());
+    booking.setDiscountType(bookingDetails.getDiscountType());
+    booking.setDiscountValue(bookingDetails.getDiscountValue());
+    booking.setDiscountAmount(bookingDetails.getDiscountAmount());
+    booking.setVehicleConditionImages(bookingDetails.getVehicleConditionImages());
+    
+    // Payment
+    booking.setTotalPrice(bookingDetails.getTotalPrice());
+    booking.setPaidAmount(bookingDetails.getPaidAmount());
+    booking.setRemainingBalance(bookingDetails.getRemainingBalance());
+    booking.setPaymentMethod(bookingDetails.getPaymentMethod());
+    booking.setPaymentStatus(bookingDetails.getPaymentStatus());
+    booking.setMpesaCode(bookingDetails.getMpesaCode());
+    
+    // Status & Notes
+    booking.setStatus(bookingDetails.getStatus());
+    booking.setNotes(bookingDetails.getNotes());
+    
+    booking.setUpdatedAt(LocalDateTime.now());
+    return bookingRepository.save(booking);
+}
 
     @Transactional
     public Booking updateBookingStatus(String id, String status) {

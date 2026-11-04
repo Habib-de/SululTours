@@ -27,7 +27,7 @@ public class CustomUserDetailsService implements UserDetailsService {
 
         List<SimpleGrantedAuthority> authorities = new ArrayList<>();
         if (user.getRole() != null) {
-            authorities.add(new SimpleGrantedAuthority("ROLE_" + user.getRole().name().toUpperCase()));
+            authorities.add(new SimpleGrantedAuthority("ROLE_" + user.getRole().name().toLowerCase()));
         }
 
         // ✅ Allow ALL users to authenticate (including pending)
